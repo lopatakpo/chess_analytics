@@ -339,6 +339,35 @@ Pod stromem je navíc volně-textová sekce **„Elo-adjusted výkonnost a ště
   (nebo skutečná změna formy – u velkého vzorku partií vyjde i malý efekt
   „signifikantní", posuď v kontextu).
 
+#### 🔍 Nejpodivnější partie
+
+Tlačítko vpravo nahoře (`anomaly.py`). **Detekce odlehlých partií** – které jsou
+nejméně podobné tvé běžné hře. Postup:
+
+1. Každou partii popíše **25 číselnými vlastnostmi** (jen z hlaviček + jednoho
+   průchodu tahy, bez enginu): délka, načasování rošády / výměny dam / prvního
+   braní, materiálové výkyvy, pěšcová struktura (izolák, ostrovy, napětí,
+   zdvojení, volný pěšec…), typ centra, opačné rošády, král v centru, Elo
+   rozdíl, typ konce (mat / vzdání).
+2. Každý sloupec projde **van der Waerdenovou transformací** (pořadí → normální
+   kvantil), takže je marginálně ~N(0,1) bez ohledu na tvar (odfiltruje šikmé
+   počty a vzácné binární vlastnosti, co by jinak rozhodily výpočet).
+3. **Kovarianční matice se shrinkage** k jednotkové (aby šla invertovat i při
+   kolinearitě, např. IQP ⇒ izolák) a spočítá se **Mahalanobisova vzdálenost**
+   d² = zᵀ Σ⁻¹ z. Na rozdíl od „daleko od průměru v jedné ose" tohle bere
+   v úvahu i to, které kombinace vlastností jsou u tebe neobvyklé.
+4. **Reweighting** – d² se přepočítá jen z 90 % nejméně odlehlých partií, ať
+   samy odlehlé partie nenafouknou Σ a „neschovají se"; medián se pak přeškáluje
+   na teoretický medián χ²(25), aby „divnost %" seděla.
+5. **Divnost %** = χ² percentil d² (Wilsonova–Hilfertyho aproximace). U každé
+   partie se d² **rozloží na příspěvky jednotlivých vlastností** (zᵢ·(Σ⁻¹z)ᵢ) →
+   sloupec „proč" ukáže 3 vlastnosti, co partii dělají nejvíc odlišnou (hodnota
+   partie vs. tvůj medián).
+
+Odlehlé partie bývají nejpoučnější (extrémní materiálový rozdíl, bizarní
+struktura, partie proti výrazně jinak silnému soupeři) a člověk si je sám
+nevybere. Dvojklik partii otevře.
+
 ### Přesnost (karta *Přesnost*)
 
 Engine projde partie vybraného hráče (vlastní přepínač barvy, **od nejnovějších**,
@@ -750,6 +779,7 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `engine_perf.py` | výchozí nastavení enginu (vlákna, hash, `UCI_ShowWDL`), `apply_engine_options` + naměřená čísla; `analyse_boards_parallel` (paralelní rozbor 1 partie) je v `game_analyzer.py` |
 | `charakter.py` | charakter partie/pozice – fázový index, volatilita, dotahování, kritičnost, ostrost |
 | `stats_util.py` | obecné statistické nástroje – Wilson, shrinkage, Elo, Kaplan–Meier, štěstí, logistická regrese |
+| `anomaly.py` | detekce odlehlých partií (Mahalanobis + van der Waerden + reweighting), bez enginu |
 | `eval_bar.py` | svislý ukazatel hodnocení pozice |
 | `filters.py` | filtr databáze (rok, tempo, síla soupeře) |
 | `player_analysis.py` | výpočet heatmapy a stromu zahájení z pozice |

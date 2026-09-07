@@ -115,6 +115,7 @@ from stats_util import (
     wilson_interval,
 )
 import report_charts
+from anomaly import detect_anomalies
 from pgn_game import LoadedGame, read_games
 from player_report import (
     COMPARE_ROWS,
@@ -1067,6 +1068,11 @@ class MainWindow(QMainWindow):
         self.cmb_pat_color = self._make_color_combo(lambda: self._reanalyze_if_ready("pat"))
         row.addWidget(self.cmb_pat_color)
         row.addStretch(1)
+        self.btn_anomaly = QPushButton("🔍 Nejpodivnější partie")
+        self.btn_anomaly.setToolTip("Partie nejméně podobné tvé běžné hře "
+                                    "(Mahalanobisova vzdálenost ve feature space).")
+        self.btn_anomaly.clicked.connect(self._open_anomaly)
+        row.addWidget(self.btn_anomaly)
         lay.addLayout(row)
         self.pat_summary = QLabel("Načti PGN databázi a vyber hráče.")
         self.pat_summary.setWordWrap(True)
@@ -4386,6 +4392,70 @@ class MainWindow(QMainWindow):
         data = item.data(0, OP_GAME_ROLE)
         if data:
             self._jump_to_game(*data)
+
+    # ------------------------------------------------- nejpodivnější partie
+    def _open_anomaly(self) -> None:
+        player = self.cmb_player.currentData()
+        if not self.games or not player:
+            QMessageBox.information(self, "Nejpodivnější partie",
+                                   "Načti PGN databázi a vyber hráče.")
+            return
+        colors = self.cmb_pat_color.currentData()
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.statusBar().showMessage("Hledám nejpodivnější partie…")
+        QApplication.processEvents()
+        try:
+            rep = detect_anomalies(self.games, player, colors,
+                                   keep=self._filter_keep, top=30)
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.statusBar().clearMessage()
+        if rep.n_features == 0 or not rep.anomalies:
+            QMessageBox.information(
+                self, "Nejpodivnější partie",
+                f"Málo partií pro analýzu (je jich {rep.n_games}, potřeba aspoň 25 "
+                f"a dost různorodých).")
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Nejpodivnější partie")
+        dlg.resize(900, 620)
+        lay = QVBoxLayout(dlg)
+        head = QLabel(
+            f"{rep.n_games} partií, {rep.n_features} vlastností. „Divnost“ = χ² "
+            f"percentil Mahalanobisovy vzdálenosti od tvé běžné hry (medián d² "
+            f"= {rep.median_d2}). Sloupec „proč“ = vlastnosti, co k odlišnosti "
+            f"přispěly nejvíc (hodnota partie vs. tvůj medián). Dvojklik otevře partii.")
+        head.setWordWrap(True)
+        head.setStyleSheet("color:#555;")
+        lay.addWidget(head)
+        t = QTableWidget(len(rep.anomalies), 5)
+        t.setHorizontalHeaderLabels(["Partie", "Výsl.", "Divnost", "d²", "Proč"])
+        t.verticalHeader().setVisible(False)
+        t.setEditTriggers(QTableWidget.NoEditTriggers)
+        t.setSelectionBehavior(QTableWidget.SelectRows)
+        t.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        t.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        for c, wd in ((1, 46), (2, 66), (3, 52)):
+            t.setColumnWidth(c, wd)
+        rmap = {"win": "V", "draw": "R", "loss": "P"}
+        for i, a in enumerate(rep.anomalies):
+            why = " · ".join(f"{lbl}: {val} (ty {med})" for lbl, val, med, _c in a.reasons)
+            cells = [a.label, rmap.get(a.result, "?"), f"{a.weirdness * 100:.1f} %",
+                     f"{a.d2:.0f}", why]
+            for c, txt in enumerate(cells):
+                it = QTableWidgetItem(txt)
+                if c in (1, 2, 3):
+                    it.setTextAlignment(Qt.AlignCenter)
+                it.setData(Qt.UserRole, a.game_index)
+                t.setItem(i, c, it)
+        t.itemDoubleClicked.connect(
+            lambda item: (self._jump_to_game(int(item.data(Qt.UserRole)), 0), dlg.accept()))
+        lay.addWidget(t, stretch=1)
+        btn = QPushButton("Zavřít")
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn, alignment=Qt.AlignRight)
+        dlg.exec()
 
     # ------------------------------------------------- vzorce (statistiky)
     def _update_patterns(self) -> None:
