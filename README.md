@@ -550,6 +550,13 @@ graf obnoví.
   chybuje víc v ostřejších pozicích. (Skutečný bodový scatter přes statisíce
   tahů celé databáze by byl nečitelný shluk, proto agregace po koších –
   vypovídá o stejné otázce: chybuje hráč víc, když je pozice ostrá?)
+- **Přesnost / hrubky podle figury a typu tahu** – sloupcový graf: průměrná
+  přesnost tahu (resp. hrubky na 100 tahů) hráče rozdělená podle **tažené
+  figury** (pěšec / jezdec / střelec / věž / dáma / král) a vedle podle **typu
+  tahu** (braní / tichý tah / šach / rošáda / proměna). Odhalí systematickou
+  slabinu – např. „s dámou dělám 2× víc hrubek než s ostatními figurami" nebo
+  „spěšné šachy mě stojí body". Jen tahy hráče, z rozboru na kartě *Přesnost*;
+  na kartě *Report* jde porovnat mezi hráči.
 - **Tahy podle kategorie (chess.com), koláč – 1 partie** – rozložení tahů
   aktuálně rozebrané partie (karta *Partie*) do všech 10 chess.com kategorií
   (i Kniha a "tiché" Nejlepší/Výborný/Dobrý – na rozdíl od seznamu tahů, kde

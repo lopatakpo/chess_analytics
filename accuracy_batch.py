@@ -326,18 +326,50 @@ class AccuracyBatch(QThread):
         my_idx = [k for k in range(len(phases)) if (k % 2 == 0) == is_white]
         eg_entry = next((k for k in my_idx if phases[k] == "Koncovka"), None)
 
+        mv_all = accuracy.per_move(evals, wdls)
+
         crit_bins = None
         if crit is not None:
-            mv = accuracy.per_move(evals, wdls)
             sums = [0.0] * N_CRIT_BINS
             cnts = [0] * N_CRIT_BINS
             for k in my_idx:
-                if k >= len(crit) or k >= len(mv):
+                if k >= len(crit) or k >= len(mv_all):
                     continue
                 bidx = min(N_CRIT_BINS - 1, int(crit[k] * N_CRIT_BINS))
-                sums[bidx] += mv[k]["acc"]
+                sums[bidx] += mv_all[k]["acc"]
                 cnts[bidx] += 1
             crit_bins = (sums, cnts)
+
+        # přesnost / hrubky podle tažené figury a typu tahu (jen tahy hráče)
+        piece_stat: dict = {}     # piece_type -> [sum_acc, n, blund]
+        mtype_stat: dict = {}     # "braní"/"tichý tah"/… -> [sum_acc, n, blund]
+        gmoves = list(game.moves)
+        for k in my_idx:
+            if k >= len(mv_all) or k >= len(gmoves) or k >= len(boards):
+                continue
+            b, m = boards[k], gmoves[k]
+            acc_k = mv_all[k]["acc"]
+            is_bl = accuracy.classify(mv_all[k]["win_drop"]) == "??"
+            pt = b.piece_type_at(m.from_square)
+            if pt:
+                st_p = piece_stat.setdefault(pt, [0.0, 0, 0])
+                st_p[0] += acc_k
+                st_p[1] += 1
+                st_p[2] += int(is_bl)
+            if b.is_castling(m):
+                mt = "rošáda"
+            elif m.promotion:
+                mt = "proměna"
+            elif b.gives_check(m):
+                mt = "šach"
+            elif b.is_capture(m):
+                mt = "braní"
+            else:
+                mt = "tichý tah"
+            st_m = mtype_stat.setdefault(mt, [0.0, 0, 0])
+            st_m[0] += acc_k
+            st_m[1] += 1
+            st_m[2] += int(is_bl)
 
         try:
             cc_counts = _count_kinds_ccom(evals, moves_uci, boards, crit, wdls)
@@ -373,6 +405,8 @@ class AccuracyBatch(QThread):
             "crit_bins": crit_bins,
             "cc_counts": cc_counts,
             "brilliants": brilliants,
+            "piece_stat": piece_stat,
+            "mtype_stat": mtype_stat,
         }
 
     # --------------------------------------------------------- sestavení výsledku
@@ -388,6 +422,8 @@ class AccuracyBatch(QThread):
         crit_cnts = [0] * N_CRIT_BINS
         cc_total: dict = {}
         brilliant_games: list = []
+        piece_tot: dict = {}
+        mtype_tot: dict = {}
 
         for r in records:
             s, g_acc, ipr, conv = r["side"], r["acc"], r["ipr"], r["conv"]
@@ -433,6 +469,16 @@ class AccuracyBatch(QThread):
                     "ply": b["ply"], "move_no": b["move_no"],
                     "by_player": b["by_player"],
                 })
+            for pt, (sa, n, bl) in (r.get("piece_stat") or {}).items():
+                t = piece_tot.setdefault(pt, [0.0, 0, 0])
+                t[0] += sa
+                t[1] += n
+                t[2] += bl
+            for mt, (sa, n, bl) in (r.get("mtype_stat") or {}).items():
+                t = mtype_tot.setdefault(mt, [0.0, 0, 0])
+                t[0] += sa
+                t[1] += n
+                t[2] += bl
 
         sections = [
             ("Souhrn", [("Celkem", _final(overall))]),
@@ -473,6 +519,12 @@ class AccuracyBatch(QThread):
                 "n": crit_cnts,
             }
 
+        def _fmt_group(d: dict) -> dict:
+            return {k: {"acc": round(v[0] / v[1], 1) if v[1] else None,
+                        "blund_100": round(v[2] * 100 / v[1], 1) if v[1] else None,
+                        "n": v[1]}
+                    for k, v in d.items()}
+
         return {
             "n_games": len(records), "requested": len(self._jobs), "depth": self._depth,
             "partial": self._stop, "thorough": self._thorough,
@@ -483,6 +535,8 @@ class AccuracyBatch(QThread):
             "crit_accuracy": crit_accuracy,
             "cc_counts": cc_total,
             "brilliants": brilliant_games,
+            "piece_accuracy": _fmt_group(piece_tot),
+            "movetype_accuracy": _fmt_group(mtype_tot),
         }
 
 

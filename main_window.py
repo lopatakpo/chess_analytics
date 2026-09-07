@@ -1182,6 +1182,8 @@ class MainWindow(QMainWindow):
         ("Tactical Awareness (histogram)", "tactical"),
         ("Profil hráče (radar)", "radar"),
         ("Kritičnost × přesnost tahu", "crit_scatter"),
+        ("Přesnost podle figury / typu tahu", "piece_acc"),
+        ("Hrubky podle figury / typu tahu", "piece_blund"),
         ("Heatmapa winrate podle dne a hodiny", "time_heatmap"),
         ("Tahy podle kategorie chess.com – 1 partie (koláč)", "move_pie"),
         ("Tahy podle kategorie chess.com – celý rozbor (koláč)", "move_pie_db"),
@@ -2072,6 +2074,8 @@ class MainWindow(QMainWindow):
             "tactical": self._chart_tactical,
             "radar": self._chart_radar,
             "crit_scatter": self._chart_crit_scatter,
+            "piece_acc": lambda: self._chart_piece(False),
+            "piece_blund": lambda: self._chart_piece(True),
             "time_heatmap": self._chart_time_heatmap,
             "move_pie": self._chart_move_pie,
             "move_pie_db": self._chart_move_pie_db,
@@ -2580,6 +2584,73 @@ class MainWindow(QMainWindow):
             f"{sum(ns)} tahů z „důkladného rozboru“ rozdělených do {len(ns)} košů "
             f"kritičnosti (šířka {1 / len(ns):.2f}); klesající křivka = víc chyb "
             f"v ostřejších pozicích.")
+
+    _PIECE_ORDER = [(chess.PAWN, "pěšec"), (chess.KNIGHT, "jezdec"),
+                    (chess.BISHOP, "střelec"), (chess.ROOK, "věž"),
+                    (chess.QUEEN, "dáma"), (chess.KING, "král")]
+    _MTYPE_ORDER = ["braní", "tichý tah", "šach", "rošáda", "proměna"]
+
+    def _chart_piece(self, blunders: bool) -> None:
+        res = self._acc_last_result
+        if not res:
+            self._set_chart_empty("Nejdřív spusť rozbor na kartě Přesnost.")
+            return
+        pa = res.get("piece_accuracy") or {}
+        ma = res.get("movetype_accuracy") or {}
+        key = "blund_100" if blunders else "acc"
+        cats: list[str] = []
+        vals: list[float] = []
+        ns: list[int] = []
+        for pt, label in self._PIECE_ORDER:
+            d = pa.get(pt) or pa.get(str(pt))
+            if d and d.get("n") and d.get(key) is not None:
+                cats.append(label)
+                vals.append(d[key])
+                ns.append(d["n"])
+        for mt in self._MTYPE_ORDER:
+            d = ma.get(mt)
+            if d and d.get("n") and d.get(key) is not None:
+                cats.append(mt)
+                vals.append(d[key])
+                ns.append(d["n"])
+        if not cats:
+            self._set_chart_empty("Rozbor na kartě Přesnost zatím nemá tahy k rozdělení "
+                                  "podle figury.")
+            return
+        title = ("Hrubky podle tažené figury a typu tahu"
+                 if blunders else "Přesnost tahu podle tažené figury a typu tahu")
+        bs = QBarSet("hrubky / 100 tahů" if blunders else "přesnost %")
+        for v in vals:
+            bs.append(float(v))
+        bs.setColor(QColor("#c62828" if blunders else "#2e7d32"))
+        series = QBarSeries()
+        series.append(bs)
+        series.setLabelsVisible(True)
+        series.setLabelsFormat("@value")
+        chart = QChart()
+        chart.addSeries(series)
+        chart.legend().hide()
+        chart.setTitle(title)
+        ax = QBarCategoryAxis()
+        ax.append(cats)
+        ay = QValueAxis()
+        if blunders:
+            ay.setRange(0.0, max(vals) * 1.2 or 1.0)
+            ay.setTitleText("hrubky na 100 tahů hráče")
+        else:
+            lo = max(0.0, min(vals) - 6.0)
+            ay.setRange(lo, 100.0)
+            ay.setTitleText("průměrná přesnost tahu (%)")
+        chart.addAxis(ax, Qt.AlignBottom)
+        chart.addAxis(ay, Qt.AlignLeft)
+        series.attachAxis(ax)
+        series.attachAxis(ay)
+        self.chart_view.setChart(chart)
+        self.chart_stack.setCurrentWidget(self.chart_view)
+        self.chart_note.setText(
+            "Jen tahy hráče, z posledního rozboru na kartě Přesnost. Levá část = "
+            "podle tažené figury, pravá = podle typu tahu (tytéž tahy, jiný pohled). "
+            "Počty tahů: " + ", ".join(f"{c} {n}" for c, n in zip(cats, ns)) + ".")
 
     def _chart_time_heatmap(self) -> None:
         player = self.cmb_player.currentData()

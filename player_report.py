@@ -66,6 +66,8 @@ def trim_accuracy(res: dict | None) -> dict | None:
         "conversion": list(res.get("conversion") or []),
         "cc_counts": dict(res.get("cc_counts") or {}),
         "crit_accuracy": res.get("crit_accuracy"),
+        "piece_accuracy": {str(k): v for k, v in (res.get("piece_accuracy") or {}).items()},
+        "movetype_accuracy": dict(res.get("movetype_accuracy") or {}),
         "per_game": [{k: r.get(k) for k in _PG_KEYS} for r in pg],
         "brilliants_player": [
             {"label": b.get("label"), "move_no": b.get("move_no")}

@@ -43,6 +43,8 @@ COMPARE_CHARTS = [
     ("luck",          "Kumulativní „štěstí“"),
     ("conversion",    "Dotahování: konverze / záchrana"),
     ("crit",          "Kritičnost × přesnost tahu"),
+    ("piece_acc",     "Přesnost podle figury / typu tahu"),
+    ("piece_blund",   "Hrubky podle figury / typu tahu"),
     ("moves",         "Kategorie tahů chess.com %"),
     ("opponent",      "Elo hráče × Elo soupeře"),
     ("volatility",    "Divokost partií"),
@@ -140,7 +142,7 @@ def _freq_lines(title: str, xlabel: str, series_map: dict, bin_width: float) -> 
 
 
 def _grouped_bars(title: str, cats: list, series_map: dict, ylabel: str,
-                  ymax: float | None = None) -> QChart:
+                  ymax: float | None = None, ymin: float | None = None) -> QChart:
     chart = QChart()
     chart.setTitle(title)
     series = QBarSeries()
@@ -155,12 +157,13 @@ def _grouped_bars(title: str, cats: list, series_map: dict, ylabel: str,
     ax.append(cats)
     ay = QValueAxis()
     ay.setTitleText(ylabel)
-    if ymax is not None:
-        ay.setRange(0, ymax)
-    else:
-        peak = max((float(v) for vals in series_map.values() for v in vals
-                    if isinstance(v, (int, float))), default=1.0)
-        ay.setRange(0.0, (peak or 1.0) * 1.12)
+    allv = [float(v) for vals in series_map.values() for v in vals
+            if isinstance(v, (int, float))]
+    lo = ymin if ymin is not None else 0.0
+    hi = ymax if ymax is not None else (max(allv) * 1.12 if allv else 1.0)
+    if ymin is not None and allv:                # dolní mez podle dat, ne pod ně
+        lo = max(0.0, min(ymin, min(allv) - 3.0))
+    ay.setRange(lo, hi)
     _attach(chart, ax, ay)
     return chart
 
@@ -377,6 +380,40 @@ def _moves(snaps):
     return [("Kategorie tahů chess.com %", chart)]
 
 
+_PIECE_LABELS = [("1", "pěšec"), ("2", "jezdec"), ("3", "střelec"),
+                 ("4", "věž"), ("5", "dáma"), ("6", "král")]
+_MTYPE_LABELS = ["braní", "tichý tah", "šach", "rošáda", "proměna"]
+
+
+def _piece(snaps, blunders: bool):
+    field = "movetype_accuracy"
+    key = "blund_100" if blunders else "acc"
+    rows = []                       # (popisek, klíč, zdroj)
+    for pk, lbl in _PIECE_LABELS:
+        rows.append((lbl, pk, "piece_accuracy"))
+    for mt in _MTYPE_LABELS:
+        rows.append((mt, mt, "movetype_accuracy"))
+    per = [(s.get("accuracy") or {}) for s in snaps]
+    cats, smap = [], {_name(s): [] for s in snaps}
+    for lbl, k, src in rows:
+        got = [(acc.get(src) or {}).get(k) for acc in per]
+        if not any(g and g.get("n") for g in got):
+            continue
+        cats.append(lbl)
+        for s, g in zip(snaps, got):
+            smap[_name(s)].append((g or {}).get(key) or 0.0)
+    if not cats:
+        return [(("Hrubky" if blunders else "Přesnost") + " podle figury",
+                 _empty("Reporty nemají rozdělení podle figury – ulož je znovu."))]
+    ttl = ("Hrubky na 100 tahů podle tažené figury a typu tahu" if blunders
+           else "Přesnost tahu podle tažené figury a typu tahu")
+    if blunders:
+        chart = _grouped_bars(ttl, cats, smap, "hrubky / 100")
+    else:
+        chart = _grouped_bars(ttl, cats, smap, "přesnost %", ymax=100.0, ymin=70.0)
+    return [(ttl, chart)]
+
+
 def _opponent(snaps):
     chart = QChart()
     chart.setTitle("Elo hráče × Elo soupeře")
@@ -530,6 +567,8 @@ _BUILDERS = {
     "luck": _luck,
     "conversion": _conversion,
     "crit": _crit,
+    "piece_acc": lambda snaps: _piece(snaps, False),
+    "piece_blund": lambda snaps: _piece(snaps, True),
     "moves": _moves,
     "opponent": _opponent,
     "ep_wasted": _ep_wasted,
