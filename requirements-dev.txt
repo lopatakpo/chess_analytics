@@ -1,0 +1,3 @@
+# Vývojové závislosti (nejsou potřeba pro běh aplikace)
+-r requirements.txt
+pytest>=8.0

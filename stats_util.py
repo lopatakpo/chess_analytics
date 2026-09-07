@@ -11,6 +11,62 @@ import math
 Z95 = 1.959963985
 
 
+def norm_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+# --------------------------------------------------------------- test dvou podílů
+def two_prop_p(k1: int, n1: int, k2: int, n2: int) -> float | None:
+    """Oboustranná p-hodnota dvouvýběrového z-testu podílů (poolovaná varianta).
+    ``None`` když je vzorek prázdný."""
+    if n1 <= 0 or n2 <= 0:
+        return None
+    p_pool = (k1 + k2) / (n1 + n2)
+    se = math.sqrt(p_pool * (1.0 - p_pool) * (1.0 / n1 + 1.0 / n2))
+    if se == 0.0:
+        return 1.0
+    z = (k1 / n1 - k2 / n2) / se
+    return max(0.0, min(1.0, 2.0 * (1.0 - norm_cdf(abs(z)))))
+
+
+def bh_reject(pvals: list, alpha: float = 0.05) -> list[bool]:
+    """Benjamini–Hochberg (kontrola FDR): pro každou p-hodnotu vrátí True, když
+    se zamítá H0 při FDR ``alpha``. ``None`` p-hodnoty → False."""
+    idx = [i for i, p in enumerate(pvals) if p is not None]
+    m = len(idx)
+    out = [False] * len(pvals)
+    if m == 0:
+        return out
+    order = sorted(idx, key=lambda i: pvals[i])
+    kmax = 0
+    for rank, i in enumerate(order, start=1):
+        if pvals[i] <= alpha * rank / m:
+            kmax = rank
+    for rank, i in enumerate(order, start=1):
+        if rank <= kmax:
+            out[i] = True
+    return out
+
+
+def winrate_outliers(buckets: list, w0: int, n0: int, alpha: float = 0.05,
+                     min_effect: float = 0.025):
+    """``buckets`` = [(výhry, rozhodnuté), …]. Každý koš se testuje proti
+    **zbytku** souboru (celek bez toho koše), pak Benjamini–Hochberg. Aby se
+    u obřích vzorků neoznačovaly triviální rozdíly, koš se označí, jen když je
+    i **věcný rozdíl** aspoň ``min_effect`` (v podílu) od celkového winrate.
+    Vrátí (flags: list[bool], pvals: list[float|None])."""
+    p0 = (w0 / n0) if n0 else 0.5
+    pvals = []
+    for w, n in buckets:
+        wr, nr = w0 - w, n0 - n
+        pvals.append(two_prop_p(w, n, wr, nr) if (n >= 1 and nr >= 1) else None)
+    flags = bh_reject(pvals, alpha)
+    for i, (w, n) in enumerate(buckets):
+        if flags[i] and n > 0 and abs(w / n - p0) < min_effect:
+            flags[i] = False
+    return flags, pvals
+
+
 # --------------------------------------------------------------- Wilsonův interval
 def wilson_interval(k: int, n: int, z: float = Z95) -> tuple[float, float] | None:
     """95% interval spolehlivosti pro podíl k/n. Vrátí (lo, hi) v 0..1, nebo None."""

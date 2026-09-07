@@ -65,11 +65,11 @@ a nejsou v repu (viz `.gitignore`):
 | soubor | co obsahuje |
 |---|---|
 | `config.json` | cesta k enginu, poslední složka, volby rozboru |
-| `analysis_cache.json` | výsledky rozborů partií enginem (velké) |
+| `analysis_cache.json.gz` | výsledky rozborů partií enginem (gzip, ~3× menší; starší `analysis_cache.json` se při prvním uložení automaticky převede) |
 | `tactics_progress.json` | postup v taktických úlohách (viděno/vyřešeno, hodnocení, opakování) |
 | `player_reports.json` | uložené reporty hráčů (karta *Report*) |
 
-`analysis_cache.json` jde smazat v menu **Engine → Smazat cache rozborů partií…**,
+`analysis_cache.json.gz` jde smazat v menu **Engine → Smazat cache rozborů partií…**,
 postup v úlohách přes **Engine → Smazat postup v taktických úlohách…**.
 
 #### Výkon enginu (vlákna, hash) – menu **Engine → Nastavit výkon enginu…**
@@ -468,8 +468,15 @@ opakování) – cache rozborů i úlohy samotné zůstanou.
 Partie hráče rozřazené podle **zahájení**; vlastní přepínač **jako bílý / jako
 černý / obě barvy**. Název zahájení se bere v pořadí: hlavička `[Opening]` /
 `[Variation]` → **plná databáze zahájení ECO** (lichess `chess-openings`,
-~3800 variant, soubor `eco.tsv` – nejdelší shoda úvodních tahů) → podrobný název
-z `[ECOUrl]` chess.com (přeložený na běžné české názvy).
+~3800 variant, soubor `eco.tsv`) → podrobný název z `[ECOUrl]` chess.com
+(přeložený na běžné české názvy).
+
+Zařazení podle `eco.tsv` **počítá transpozice**: kromě shody úvodních tahů
+v pořadí se porovnávají i **pozice** (transpoziční klíč šachovnice) po každém
+půltahu proti koncovým pozicím všech katalogizovaných linií. Takže `1.Jf3 c5
+2.e4 d6` se zařadí jako sicilská (B50), i když ta stejná pozice v `eco.tsv`
+vzniká pořadím `1.e4 c5 2.Jf3 d6`. Book depth (viz níže) se pak počítá jako
+nejzazší půltah, kdy je pozice pořád ještě v knize – po libovolném pořadí tahů.
 
 Strom má tři úrovně: **ECO kód → varianta → jednotlivé partie**; po spuštění je
 **sbalený**. U kódu i varianty je počet partií, winrate a pruh V/R/P (u obou
@@ -504,6 +511,17 @@ tooltip nad procentem nese:
   velkém vzorku) zůstane skoro nezměněný. Ve stromu zahájení navíc uzly bez
   vlastních dat dostanou i predikci z podstromu (empirický Markovův řetězec –
   vážený průměr predikcí dětí).
+
+### Test rozdílu ve winrate tabulkách (▲/▼)
+
+Na kartách **Vzorce**, **Zahájení** a **Koncovky** se každý koš (rošáda ano/ne,
+konkrétní zahájení, typ koncovky, počet pěšců…) navíc **testuje proti zbytku
+souboru** – dvouvýběrový z-test podílů (výhra vs. neúspěch) mezi tím košem
+a celkem hráče bez toho koše. Aby při desítkách košů nevznikaly falešné nálezy,
+p-hodnoty projdou **Benjamini–Hochbergovou korekcí** (kontrola FDR na 5 %)
+a označí se jen koš, který navíc má i **věcný rozdíl aspoň 2,5 p.b.** od
+celkového winrate. Označený koš dostane v tabulce ▲ (spolehlivě lepší) nebo ▼
+(spolehlivě horší), tučně, a p-hodnota je v tooltipu. Kód: `stats_util.winrate_outliers`.
 
 ### Koncovky (karta *Koncovky*)
 
@@ -781,10 +799,10 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `move_class.py` | klasifikace tahů ve stylu chess.com (Nejlepší…Hrubka + Brilantní/Skvělý tah/Přehlédnutí) |
 | `accuracy.py` | metriky přesnosti z hodnocení partie (win%, přesnost, EP, T1) |
 | `accuracy_batch.py` | vlákno pro dávkový rozbor přesnosti přes databázi (umí N enginů paralelně) |
-| `analysis_cache.py` | thread-safe cache rozborů partií (`analysis_cache.json`) |
+| `analysis_cache.py` | thread-safe **gzipovaná** cache rozborů partií (`analysis_cache.json.gz`) |
 | `engine_perf.py` | výchozí nastavení enginu (vlákna, hash, `UCI_ShowWDL`), `apply_engine_options` + naměřená čísla; `analyse_boards_parallel` (paralelní rozbor 1 partie) je v `game_analyzer.py` |
 | `charakter.py` | charakter partie/pozice – fázový index, volatilita, dotahování, kritičnost, ostrost |
-| `stats_util.py` | obecné statistické nástroje – Wilson, shrinkage, Elo, Kaplan–Meier, štěstí, logistická regrese |
+| `stats_util.py` | obecné statistické nástroje – Wilson, shrinkage, Elo, Kaplan–Meier, štěstí, logistická regrese, dvouvýběrový test podílů + Benjamini–Hochberg |
 | `anomaly.py` | detekce odlehlých partií (Mahalanobis + van der Waerden + reweighting), bez enginu |
 | `eval_bar.py` | svislý ukazatel hodnocení pozice |
 | `filters.py` | filtr databáze (rok, tempo, síla soupeře) |
@@ -793,7 +811,7 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `histogram_widget.py` | histogram se zvonovou (normální) křivkou a stat-boxem – styl Minitab (QPainter) |
 | `time_heatmap_widget.py` | heatmapa winrate podle dne v týdnu a hodiny (QPainter) |
 | `patterns.py` | statistické vzorce partií (rošáda, dámy, materiál, struktura, …) + lehké průchody pro kartu Grafy |
-| `openings.py` | zařazení partií podle zahájení (ECO), diverzita repertoáru, hloubka teorie/book exit |
+| `openings.py` | zařazení partií podle zahájení (ECO, **s transpozicemi** – podle pozic, ne pořadí tahů), diverzita repertoáru, hloubka teorie/book exit |
 | `eco.tsv` | databáze zahájení ECO (lichess `chess-openings`, ~3800 variant) |
 | `endgames.py` | rozpoznání a kategorizace koncovek |
 | `tactics.py` | taktické úlohy z rozboru partií: motivy, obtížnost, tolerance, opakování SM-2 (`tactics_progress.json`) |
@@ -803,6 +821,20 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `report_charts.py` | srovnávací grafy pro kartu Report (jedna série na hráče, ze snímků) |
 | `report_export.py` | export porovnání hráčů do PDF (`QTextDocument` → `QPrinter`) |
 | `sample.pgn` | ukázkové partie (Immortal Game, Opera Game) |
+| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), statistika, cache, anomálie |
+
+## Testy
+
+Testy pokrývají moduly bez enginu a bez GUI (čistá matematika a logika):
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+`conftest.py` přidá kořen aplikace na `sys.path`, takže testy dělají ploché
+importy jako appka. Cache test si cesty přesměruje do dočasné složky – skutečné
+`analysis_cache.json.gz` se nedotkne.
 
 ## Omezení
 

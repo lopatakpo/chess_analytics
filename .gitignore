@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.pytest_cache/
 .venv/
 venv/
 env/
@@ -16,9 +17,12 @@ config.json
 
 # --- data vytvořená za běhu (uživatelská, nepatří do repa) ---
 analysis_cache.json
+analysis_cache.json.gz
 tactics_progress.json
 player_reports.json
 *.json.tmp
+*.json.gz.tmp
+feature_cache.json.gz
 
 # --- exporty / výstupy ---
 porovnani_*.pdf

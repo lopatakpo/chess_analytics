@@ -2,8 +2,9 @@
 
 Pořadí zdrojů názvu zahájení:
 1. hlavičky PGN ``[Opening]`` / ``[Variation]``,
-2. databáze ``eco.tsv`` (lichess chess-openings, ~3800 variant) podle úvodních
-   tahů – nejdelší shodný začátek,
+2. databáze ``eco.tsv`` (lichess chess-openings, ~3800 variant) – hledá se
+   nejspecifičtější ECO **pozice**, kterou partie prošla (ne pořadí tahů),
+   takže se zachytí i **transpozice** (např. sicilská přes 1.Jf3),
 3. ``[ECOUrl]`` z chess.com (podrobný název varianty).
 """
 from __future__ import annotations
@@ -22,6 +23,8 @@ from player_analysis import game_matches, player_result
 # ---- databáze zahájení (lichess chess-openings, ~3800 variant) --------------
 _ECO_DB: dict[tuple, tuple] = {}      # (UCI tahy) -> (ECO kód, název)
 _ECO_NAMES: dict[str, str] = {}       # ECO kód -> nejobecnější název
+_ECO_BY_POS: dict = {}               # klíč KONCOVÉ pozice linie -> (ECO, název, délka linie)
+_ECO_ALL_POS: set = set()            # klíče VŠECH pozic na všech ECO liniích (na hloubku knihy)
 
 
 def _load_eco() -> int:
@@ -45,25 +48,63 @@ def _load_eco() -> int:
                 mv = board.parse_san(san)
                 ucis.append(mv.uci())
                 board.push(mv)
+                _ECO_ALL_POS.add(board._transposition_key())
         except Exception:
             continue
         if ucis:
             _ECO_DB[tuple(ucis)] = (eco, name)
             _ECO_NAMES.setdefault(eco, name)
             maxlen = max(maxlen, len(ucis))
+            end_key = board._transposition_key()
+            prev = _ECO_BY_POS.get(end_key)
+            if prev is None or len(ucis) > prev[2]:   # při transpozici nech tu specifičtější
+                _ECO_BY_POS[end_key] = (eco, name, len(ucis))
     return maxlen
 
 
 _MAX_LINE = _load_eco()
 
 
-def classify_by_moves(uci_moves) -> tuple[str | None, str, int]:
-    """(ECO, název, hloubka knihy) – nejdelší začátek partie shodný s databází."""
+def classify_by_moves(uci_moves, pos_keys=None) -> tuple[str | None, str, int]:
+    """(ECO, název, hloubka knihy). Kromě shody **doslovného** začátku partie
+    hledá i **transpozice** – nejspecifičtější ECO pozici, kterou partie prošla
+    (podle klíče pozice, ne pořadí tahů). ``pos_keys`` (klíče pozic po každém
+    půltahu, včetně výchozí) se když nejsou, dopočítají přehráním tahů.
+
+    Hloubka knihy = poslední půltah, kdy je partie ještě v nějaké známé
+    zahajovací pozici (i po transpozici zpět)."""
+    # 1) doslovný prefix – rychlé, pokrývá běžný případ i délku „specifičnosti"
+    eco = name = None
+    spec = 0            # délka nejspecifičtější shodné linie
+    book = 0            # hloubka knihy (půltahy)
     best = (None, "Nezařazeno", 0)
     for n in range(1, min(len(uci_moves), _MAX_LINE) + 1):
         hit = _ECO_DB.get(tuple(uci_moves[:n]))
         if hit:
-            best = (hit[0], hit[1], n)
+            eco, name, spec, book, best = hit[0], hit[1], n, n, (hit[0], hit[1], n)
+
+    # 2) transpozice + hloubka knihy podle pozic
+    if _ECO_BY_POS:
+        keys = pos_keys
+        if keys is None:
+            try:
+                b = chess.Board()
+                keys = [b._transposition_key()]
+                for u in uci_moves[:_MAX_LINE]:
+                    b.push(chess.Move.from_uci(u))
+                    keys.append(b._transposition_key())
+            except Exception:
+                keys = None
+        if keys:
+            for i in range(1, min(len(keys), _MAX_LINE + 1)):
+                k = keys[i]
+                if k in _ECO_ALL_POS:
+                    book = max(book, i)
+                hit = _ECO_BY_POS.get(k)
+                if hit and hit[2] > spec:
+                    eco, name, spec = hit
+    if name:
+        return (eco, name, book or spec)
     return best
 
 
@@ -163,9 +204,16 @@ def game_opening(game) -> tuple[str | None, str, int]:
     if var and var.lower() not in hdr_name.lower():
         hdr_name = f"{hdr_name}: {var}" if hdr_name else var
 
-    by_eco, by_name, depth = classify_by_moves([m.uci() for m in game.moves[:_MAX_LINE]])
+    try:
+        keys = game.keys
+    except Exception:
+        keys = None
+    by_eco, by_name, depth = classify_by_moves(
+        [m.uci() for m in game.moves[:_MAX_LINE]], pos_keys=keys)
     hdr_code = eco[:3] if (len(eco) >= 3 and eco[0] in "ABCDE" and eco[1:3].isdigit()) else None
-    code = by_eco or hdr_code
+    # hlavičková ECO (lichess/chess.com – kurátorovaná, řeší transpozice) má
+    # přednost; vlastní klasifikace podle pozic doplní partie bez hlavičky
+    code = hdr_code or by_eco
 
     if hdr_name:
         name = hdr_name
