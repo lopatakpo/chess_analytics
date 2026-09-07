@@ -475,6 +475,7 @@ class MainWindow(QMainWindow):
         self._filter_keep = None
         # rozbor aktuální partie enginem
         self._game_eval: dict | None = None
+        self._crit_plies: list = []
         self._game_analyzer: GameAnalyzer | None = None
         # dávkový rozbor přesnosti (karta Přesnost) + sdílená cache rozborů
         self._acc_batch: AccuracyBatch | None = None
@@ -657,6 +658,27 @@ class MainWindow(QMainWindow):
         self.ga_summary.setWordWrap(True)
         self.ga_summary.setStyleSheet("color:#555;")
         tg.addWidget(self.ga_summary)
+
+        self.crit_row = QWidget()
+        cr = QHBoxLayout(self.crit_row)
+        cr.setContentsMargins(0, 0, 0, 0)
+        cr.addWidget(QLabel("Kritické momenty:"))
+        self.btn_crit_prev = QPushButton("◀")
+        self.btn_crit_prev.setFixedWidth(30)
+        self.btn_crit_prev.clicked.connect(lambda: self._step_crit(-1))
+        cr.addWidget(self.btn_crit_prev)
+        self.cmb_crit = QComboBox()
+        self.cmb_crit.setMinimumWidth(260)
+        self.cmb_crit.activated.connect(self._on_crit_selected)
+        cr.addWidget(self.cmb_crit)
+        self.btn_crit_next = QPushButton("▶")
+        self.btn_crit_next.setFixedWidth(30)
+        self.btn_crit_next.clicked.connect(lambda: self._step_crit(1))
+        cr.addWidget(self.btn_crit_next)
+        cr.addStretch(1)
+        self.crit_row.hide()
+        tg.addWidget(self.crit_row)
+
         self.ga_legend = QLabel("")
         self.ga_legend.setTextFormat(Qt.RichText)
         self.ga_legend.setWordWrap(True)
@@ -1184,6 +1206,8 @@ class MainWindow(QMainWindow):
         ("Kritičnost × přesnost tahu", "crit_scatter"),
         ("Přesnost podle figury / typu tahu", "piece_acc"),
         ("Hrubky podle figury / typu tahu", "piece_blund"),
+        ("Chybová heatmapa – odkud táhnu", "err_from"),
+        ("Chybová heatmapa – kam táhnu", "err_to"),
         ("Heatmapa winrate podle dne a hodiny", "time_heatmap"),
         ("Tahy podle kategorie chess.com – 1 partie (koláč)", "move_pie"),
         ("Tahy podle kategorie chess.com – celý rozbor (koláč)", "move_pie_db"),
@@ -1232,9 +1256,11 @@ class MainWindow(QMainWindow):
         self.chart_view.setRenderHint(QPainter.Antialiasing)
         self.chart_hist = HistogramChart()
         self.chart_heat = TimeHeatmap()
+        self.chart_errmap = HeatmapWidget()
         self.chart_stack.addWidget(self.chart_view)
         self.chart_stack.addWidget(self.chart_hist)
         self.chart_stack.addWidget(self.chart_heat)
+        self.chart_stack.addWidget(self.chart_errmap)
         lay.addWidget(self.chart_stack, stretch=1)
         return page
 
@@ -2076,6 +2102,8 @@ class MainWindow(QMainWindow):
             "crit_scatter": self._chart_crit_scatter,
             "piece_acc": lambda: self._chart_piece(False),
             "piece_blund": lambda: self._chart_piece(True),
+            "err_from": lambda: self._chart_error_map("f"),
+            "err_to": lambda: self._chart_error_map("t"),
             "time_heatmap": self._chart_time_heatmap,
             "move_pie": self._chart_move_pie,
             "move_pie_db": self._chart_move_pie_db,
@@ -2652,6 +2680,34 @@ class MainWindow(QMainWindow):
             "podle tažené figury, pravá = podle typu tahu (tytéž tahy, jiný pohled). "
             "Počty tahů: " + ", ".join(f"{c} {n}" for c, n in zip(cats, ns)) + ".")
 
+    def _chart_error_map(self, which: str) -> None:
+        res = self._acc_last_result
+        if not res:
+            self._set_chart_empty("Nejdřív spusť rozbor na kartě Přesnost.")
+            return
+        em = res.get("error_map") or {}
+        bad = em.get("mf" if which == "f" else "mt") or [0] * 64
+        blu = em.get("bf" if which == "f" else "bt") or [0] * 64
+        allm = em.get("af" if which == "f" else "at") or [0] * 64
+        if not any(bad):
+            self._set_chart_empty("Rozbor na kartě Přesnost zatím nemá chyby k zobrazení.")
+            return
+        self.chart_errmap.set_data(bad, chess.WHITE)
+        self.chart_stack.setCurrentWidget(self.chart_errmap)
+        tot_bad, tot_bl = sum(bad), sum(blu)
+        odkud = "odkud táhla figura" if which == "f" else "kam figura táhla"
+        # nejhorší pole podle podílu chyb
+        worst = sorted(
+            ((i, bad[i], allm[i]) for i in range(64) if allm[i] >= 5),
+            key=lambda x: -(x[1] / x[2]))[:3]
+        wtxt = "; ".join(f"{chess.square_name(i)} {b}/{a} ({100 * b / a:.0f} %)"
+                         for i, b, a in worst)
+        self.chart_note.setText(
+            f"Počet chyb (nepřesnost + chyba + hrubka, z toho {tot_bl} hrubek) podle "
+            f"pole, {odkud} – sjednoceno na perspektivu hráče (tvá 1. řada dole). "
+            f"Celkem {tot_bad} chybných tahů z posledního rozboru na kartě Přesnost. "
+            + (f"Nejchybovější pole (chyby / všechny tahy): {wtxt}." if wtxt else ""))
+
     def _chart_time_heatmap(self) -> None:
         player = self.cmb_player.currentData()
         if not self.games or not player:
@@ -3005,6 +3061,9 @@ class MainWindow(QMainWindow):
         self.ga_summary.setText("")
         self.btn_game_analyze.setText("⚙ Rozebrat partii enginem")
         self.ga_legend.hide()
+        if hasattr(self, "crit_row"):
+            self.crit_row.hide()
+            self._crit_plies = []
         self._update_header()
         self._rebuild_move_table()
         prev_player = self.cmb_player.currentData()
@@ -3358,6 +3417,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, "ga_summary"):
             self.ga_summary.setText("")
             self.btn_game_analyze.setText("⚙ Rozebrat partii enginem")
+        if hasattr(self, "crit_row"):
+            self.crit_row.hide()
+            self._crit_plies = []
         self._invalidate_analyses()
         self.statusBar().showMessage(f"Cache rozborů smazána ({removed} partií).", 8000)
 
@@ -3707,6 +3769,50 @@ class MainWindow(QMainWindow):
         self._rebuild_move_table()
         self._highlight_current_move()
         self._update_eval_bar()
+        self._fill_crit_moments(result)
+
+    # ------------------------------------------------ kritické momenty partie
+    def _fill_crit_moments(self, result: dict) -> None:
+        evals = result.get("evals") or []
+        ws = win_series(evals, result.get("wdls"))
+        swings = []                      # (ply_po_tahu, delta_pb_z_pohledu_hráče_na_tahu)
+        for k in range(len(ws) - 1):
+            mover_white = (k % 2 == 0)
+            d = (ws[k + 1] - ws[k]) if mover_white else (ws[k] - ws[k + 1])
+            swings.append((k + 1, d))     # ply k+1 = pozice po tahu k
+        # největší výkyvy (oběma směry), aspoň 8 p.b., max 10
+        top = sorted(swings, key=lambda x: -abs(x[1]))
+        top = [t for t in top if abs(t[1]) >= 8.0][:10]
+        top.sort(key=lambda x: x[0])
+        self._crit_plies = [p for p, _ in top]
+        self.cmb_crit.blockSignals(True)
+        self.cmb_crit.clear()
+        moves = self.game.moves if self.game else []
+        for ply, d in top:
+            k = ply - 1
+            san = "?"
+            try:
+                san = self.game.boards[k].san(moves[k])
+            except Exception:
+                pass
+            mv_no = (k // 2) + 1
+            dot = "." if k % 2 == 0 else "…"
+            sign = "▲" if d > 0 else "▼"
+            self.cmb_crit.addItem(f"{mv_no}{dot} {san}   {sign} {abs(d):.0f} % pro hráče na tahu")
+        self.cmb_crit.blockSignals(False)
+        self.crit_row.setVisible(bool(self._crit_plies))
+
+    def _on_crit_selected(self, idx: int) -> None:
+        if 0 <= idx < len(self._crit_plies):
+            self.set_ply(self._crit_plies[idx])
+
+    def _step_crit(self, direction: int) -> None:
+        if not self._crit_plies:
+            return
+        cur = self.cmb_crit.currentIndex()
+        nxt = max(0, min(len(self._crit_plies) - 1, cur + direction))
+        self.cmb_crit.setCurrentIndex(nxt)
+        self.set_ply(self._crit_plies[nxt])
 
     def _open_guess_move(self) -> None:
         if not self.game or self.game.ply_count == 0:

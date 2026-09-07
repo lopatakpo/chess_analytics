@@ -343,13 +343,17 @@ class AccuracyBatch(QThread):
         # přesnost / hrubky podle tažené figury a typu tahu (jen tahy hráče)
         piece_stat: dict = {}     # piece_type -> [sum_acc, n, blund]
         mtype_stat: dict = {}     # "braní"/"tichý tah"/… -> [sum_acc, n, blund]
+        # chybová heatmapa – pole (odkud/kam) sjednocené na perspektivu hráče
+        err_sq = {"bf": [0] * 64, "bt": [0] * 64, "mf": [0] * 64, "mt": [0] * 64,
+                  "af": [0] * 64, "at": [0] * 64}
         gmoves = list(game.moves)
         for k in my_idx:
             if k >= len(mv_all) or k >= len(gmoves) or k >= len(boards):
                 continue
             b, m = boards[k], gmoves[k]
             acc_k = mv_all[k]["acc"]
-            is_bl = accuracy.classify(mv_all[k]["win_drop"]) == "??"
+            kind_k = accuracy.classify(mv_all[k]["win_drop"])
+            is_bl = kind_k == "??"
             pt = b.piece_type_at(m.from_square)
             if pt:
                 st_p = piece_stat.setdefault(pt, [0.0, 0, 0])
@@ -370,6 +374,16 @@ class AccuracyBatch(QThread):
             st_m[0] += acc_k
             st_m[1] += 1
             st_m[2] += int(is_bl)
+            sf = m.from_square if is_white else chess.square_mirror(m.from_square)
+            stg = m.to_square if is_white else chess.square_mirror(m.to_square)
+            err_sq["af"][sf] += 1
+            err_sq["at"][stg] += 1
+            if is_bl:
+                err_sq["bf"][sf] += 1
+                err_sq["bt"][stg] += 1
+            if kind_k in ("?", "??"):
+                err_sq["mf"][sf] += 1
+                err_sq["mt"][stg] += 1
 
         try:
             cc_counts = _count_kinds_ccom(evals, moves_uci, boards, crit, wdls)
@@ -407,6 +421,7 @@ class AccuracyBatch(QThread):
             "brilliants": brilliants,
             "piece_stat": piece_stat,
             "mtype_stat": mtype_stat,
+            "err_sq": err_sq,
         }
 
     # --------------------------------------------------------- sestavení výsledku
@@ -424,6 +439,7 @@ class AccuracyBatch(QThread):
         brilliant_games: list = []
         piece_tot: dict = {}
         mtype_tot: dict = {}
+        err_tot = {k: [0] * 64 for k in ("bf", "bt", "mf", "mt", "af", "at")}
 
         for r in records:
             s, g_acc, ipr, conv = r["side"], r["acc"], r["ipr"], r["conv"]
@@ -479,6 +495,11 @@ class AccuracyBatch(QThread):
                 t[0] += sa
                 t[1] += n
                 t[2] += bl
+            es = r.get("err_sq") or {}
+            for key, arr in err_tot.items():
+                src = es.get(key) or []
+                for i in range(min(64, len(src))):
+                    arr[i] += src[i]
 
         sections = [
             ("Souhrn", [("Celkem", _final(overall))]),
@@ -537,6 +558,7 @@ class AccuracyBatch(QThread):
             "brilliants": brilliant_games,
             "piece_accuracy": _fmt_group(piece_tot),
             "movetype_accuracy": _fmt_group(mtype_tot),
+            "error_map": err_tot,   # 64-pole, perspektiva hráče: b*=hrubky, m*=chyby+, a*=všechny tahy; *f=odkud, *t=kam
         }
 
 

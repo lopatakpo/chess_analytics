@@ -213,7 +213,11 @@ pozadí (multipv=3 vždy – jedna partie je levná, viz styl níže) a pak:
   partie (průměrný skok pravděpodobnosti výhry na půltah – jak moc partie „házelo") –
   tahle souhrnná řádka zůstává vždycky podle lichess metodiky (na tu je navázaný
   ACPL a kompozitní index i jinde v appce), styl níže mění jen značky u tahů,
-- **svislý ukazatel** pak při procházení partie ukazuje hodnocení dané pozice.
+- **svislý ukazatel** pak při procházení partie ukazuje hodnocení dané pozice,
+- pod souhrnem se objeví řádek **Kritické momenty** – rozbalovací seznam
+  půltahů s největším skokem pravděpodobnosti výhry (▲/▼ a o kolik p.b.,
+  z pohledu strany na tahu), tlačítka ◀ ▶ skáčou mezi nimi. Rychlý způsob,
+  jak najít zlomy dlouhé partie.
 
 Tlačítko během výpočtu slouží k přerušení (**■ Zastavit rozbor**), po dokončení
 k opakování (**↻ Rozebrat znovu**). Přepnutí na jinou partii rozbor zahodí.
@@ -557,6 +561,11 @@ graf obnoví.
   slabinu – např. „s dámou dělám 2× víc hrubek než s ostatními figurami" nebo
   „spěšné šachy mě stojí body". Jen tahy hráče, z rozboru na kartě *Přesnost*;
   na kartě *Report* jde porovnat mezi hráči.
+- **Chybová heatmapa** – heatmapa polí na šachovnici: na kterých polích stály
+  tvoje figury, když jsi udělal chybu (nepřesnost/chyba/hrubka), varianta
+  „odkud táhnu" a „kam táhnu". Sjednoceno na **perspektivu hráče** (tvá 1. řada
+  dole, tahy za černého zrcadleny), takže „e4" nemíchá bílého s černým.
+  Poznámka pod grafem vypíše nejchybovější pole (podíl chyb ze všech tahů z něj).
 - **Tahy podle kategorie (chess.com), koláč – 1 partie** – rozložení tahů
   aktuálně rozebrané partie (karta *Partie*) do všech 10 chess.com kategorií
   (i Kniha a "tiché" Nejlepší/Výborný/Dobrý – na rozdíl od seznamu tahů, kde

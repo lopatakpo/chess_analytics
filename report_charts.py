@@ -27,6 +27,7 @@ from PySide6.QtCharts import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPen
 
+from heatmap_widget import HeatmapWidget
 from move_class import KIND_LABEL, KIND_ORDER
 from patterns import to_prague_local
 from player_report import RADAR_AXES, cc_percentages, extract_metrics
@@ -57,6 +58,7 @@ COMPARE_CHARTS = [
     ("elo_hist",      "Rozdíl Elo soupeře"),
     ("length_result", "Délka partie podle výsledku"),
     ("openings",      "Winrate podle zahájení"),
+    ("error_map",     "Chybová heatmapa (odkud táhnu)"),
     ("time_heatmap",  "Heatmapa dne × hodiny"),
 ]
 TREND_METRICS = [("ACPL", "acpl"), ("Přesnost %", "accuracy"), ("IPR", "ipr"),
@@ -562,6 +564,21 @@ def _time_heatmap(snaps):
     return out
 
 
+def _error_map(snaps):
+    out = []
+    for s in snaps:
+        em = (s.get("accuracy") or {}).get("error_map") or {}
+        mf = em.get("mf") or []
+        if not any(mf):
+            out.append((f"Chybová heatmapa – {_name(s)}",
+                        _empty("Report nemá chybovou heatmapu – ulož ho znovu.")))
+            continue
+        wdg = HeatmapWidget()
+        wdg.set_data([int(x) for x in mf[:64]])   # už sjednoceno na perspektivu hráče
+        out.append((f"Chybová heatmapa (odkud táhnu) – {_name(s)}", wdg))
+    return out
+
+
 _BUILDERS = {
     "radar": _radar,
     "luck": _luck,
@@ -574,6 +591,7 @@ _BUILDERS = {
     "ep_wasted": _ep_wasted,
     "length_result": _length_result,
     "openings": _openings,
+    "error_map": _error_map,
     "time_heatmap": _time_heatmap,
     "volatility": lambda snaps: [("Divokost partií", _freq_lines(
         "Divokost partií (průměrný skok šance na výhru / půltah, %)",

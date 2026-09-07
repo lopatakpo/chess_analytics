@@ -68,6 +68,7 @@ def trim_accuracy(res: dict | None) -> dict | None:
         "crit_accuracy": res.get("crit_accuracy"),
         "piece_accuracy": {str(k): v for k, v in (res.get("piece_accuracy") or {}).items()},
         "movetype_accuracy": dict(res.get("movetype_accuracy") or {}),
+        "error_map": {k: list(v) for k, v in (res.get("error_map") or {}).items()},
         "per_game": [{k: r.get(k) for k in _PG_KEYS} for r in pg],
         "brilliants_player": [
             {"label": b.get("label"), "move_no": b.get("move_no")}
