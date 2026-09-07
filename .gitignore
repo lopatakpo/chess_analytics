@@ -1,0 +1,34 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- editory / IDE ---
+.vscode/
+.idea/
+.claude/
+
+# --- lokální nastavení (viz config.example.json) ---
+config.json
+
+# --- data vytvořená za běhu (uživatelská, nepatří do repa) ---
+analysis_cache.json
+tactics_progress.json
+player_reports.json
+*.json.tmp
+
+# --- exporty / výstupy ---
+porovnani_*.pdf
+*.pdf
+!doc/*.pdf
+
+# --- engine (uživatel dodává vlastní binárku) ---
+stockfish*
+*.exe
+
+# --- vlastní PGN databáze (kromě ukázkové) ---
+*.pgn
+!sample.pgn

@@ -1,0 +1,11 @@
+{
+  "engine_path": "C:/cesta/ke/stockfish.exe",
+  "last_dir": "",
+  "ga_depth": 12,
+  "acc_depth": 10,
+  "acc_cap": 500,
+  "acc_thorough": false,
+  "ga_style": "lichess",
+  "engine_parallel": 1,
+  "use_wdl": true
+}

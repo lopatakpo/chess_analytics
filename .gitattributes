@@ -1,0 +1,5 @@
+# normalizace konců řádků – v repu vždy LF
+* text=auto eol=lf
+*.bat text eol=crlf
+*.tsv text eol=lf
+sample.pgn text eol=lf
