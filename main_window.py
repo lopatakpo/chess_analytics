@@ -4422,10 +4422,13 @@ class MainWindow(QMainWindow):
         dlg.resize(900, 620)
         lay = QVBoxLayout(dlg)
         head = QLabel(
-            f"{rep.n_games} partií, {rep.n_features} vlastností. „Divnost“ = χ² "
-            f"percentil Mahalanobisovy vzdálenosti od tvé běžné hry (medián d² "
-            f"= {rep.median_d2}). Sloupec „proč“ = vlastnosti, co k odlišnosti "
-            f"přispěly nejvíc (hodnota partie vs. tvůj medián). Dvojklik otevře partii.")
+            f"{rep.n_games} partií po filtru (vyřazeno {rep.n_skipped}: mimo tvé "
+            f"Elo pásmo, rozhodnuté drtivou materiální převahou nebo miniaturky – "
+            f"ty nejsou ke studiu zajímavé). {rep.n_features} vlastností. "
+            f"„Divnost“ = χ² percentil Mahalanobisovy vzdálenosti od tvé běžné hry "
+            f"(medián d² = {rep.median_d2}). Sloupec „proč“ = vlastnosti, co "
+            f"k odlišnosti přispěly nejvíc (hodnota partie vs. tvůj medián). "
+            f"Dvojklik otevře partii.")
         head.setWordWrap(True)
         head.setStyleSheet("color:#555;")
         lay.addWidget(head)

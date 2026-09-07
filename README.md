@@ -342,13 +342,18 @@ Pod stromem je navíc volně-textová sekce **„Elo-adjusted výkonnost a ště
 #### 🔍 Nejpodivnější partie
 
 Tlačítko vpravo nahoře (`anomaly.py`). **Detekce odlehlých partií** – které jsou
-nejméně podobné tvé běžné hře. Postup:
+nejméně podobné tvé běžné hře, se zaměřením na partie **zajímavé ke studiu**.
+Postup:
 
-1. Každou partii popíše **25 číselnými vlastnostmi** (jen z hlaviček + jednoho
+0. **Filtr** – nejdřív vyřadí partie, co nemohly být napínavé: mimo tvé Elo
+   pásmo (|Δ| > 350), rozhodnuté drtivou trvalou materiální převahou (> věž –
+   „soupeř s holým králem tahá do matu" není k ničemu), miniaturky (< 12 tahů),
+   nedohrané.
+1. Zbytek popíše **~24 číselnými vlastnostmi** (jen z hlaviček + jednoho
    průchodu tahy, bez enginu): délka, načasování rošády / výměny dam / prvního
-   braní, materiálové výkyvy, pěšcová struktura (izolák, ostrovy, napětí,
-   zdvojení, volný pěšec…), typ centra, opačné rošády, král v centru, Elo
-   rozdíl, typ konce (mat / vzdání).
+   braní, oběť / trvalé manko (oříznuto na 6), pěšcová struktura (izolák,
+   ostrovy, napětí, zdvojení, volný pěšec…), typ centra, opačné rošády, král
+   v centru, typ konce (mat / vzdání).
 2. Každý sloupec projde **van der Waerdenovou transformací** (pořadí → normální
    kvantil), takže je marginálně ~N(0,1) bez ohledu na tvar (odfiltruje šikmé
    počty a vzácné binární vlastnosti, co by jinak rozhodily výpočet).
@@ -364,9 +369,10 @@ nejméně podobné tvé běžné hře. Postup:
    sloupec „proč" ukáže 3 vlastnosti, co partii dělají nejvíc odlišnou (hodnota
    partie vs. tvůj medián).
 
-Odlehlé partie bývají nejpoučnější (extrémní materiálový rozdíl, bizarní
-struktura, partie proti výrazně jinak silnému soupeři) a člověk si je sám
-nevybere. Dvojklik partii otevře.
+Odlehlé partie bývají nejpoučnější – pozice **nepodobné tvé běžné hře**
+(uzamčené struktury s pěšcovým napětím, neobvyklé načasování výměny dam,
+roztříštěná pěšcová struktura, pozdní rošáda, král v centru, opačné rošády,
+dlouhé manévrovací partie) a člověk si je sám nevybere. Dvojklik partii otevře.
 
 ### Přesnost (karta *Přesnost*)
 

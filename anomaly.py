@@ -1,18 +1,27 @@
 """Detekce anomálních partií hráče – Mahalanobisova vzdálenost ve feature space.
 
-Každá partie se popíše číselným vektorem (jen z hlaviček + jednoho průchodu tahy,
-bez enginu – délka, načasování rošády / výměny dam / prvního braní, materiálové
-výkyvy, pěšcová struktura, typ centra, vztah rošád, Elo rozdíl, typ konce). Pak:
+Cíl: partie **zajímavé ke studiu**, ne jen statisticky vzácné. Proto se nejdřív
+zahodí partie, které nemohly být napínavé (viz ``_interesting``): mimo tvé Elo
+pásmo (|Δ| > 350), rozhodnuté drtivou trvalou materiální převahou (> věž),
+miniaturky (< 12 tahů), nedohrané.
 
-1. robustní standardizace každého sloupce (medián a MAD místo průměru a σ),
-2. kovarianční matice se shrinkage k jednotkové (aby šla invertovat i při
-   kolinearitě, např. „IQP" implikuje „izolák"),
+Zbytek: každá partie → číselný vektor ~24 vlastností (jen z hlaviček + jednoho
+průchodu tahy, bez enginu – délka, načasování rošády / výměny dam / prvního
+braní, oběť / trvalé manko (oříznuto na 6), pěšcová struktura, typ centra,
+opačné rošády, král v centru, typ konce). Pak:
+
+1. **van der Waerdenova transformace** každého sloupce (pořadí → normální
+   kvantil) – marginálně ~N(0,1) bez ohledu na tvar (odfiltruje šikmé počty
+   a vzácné binární vlastnosti, co jinak rozhodí Σ⁻¹),
+2. kovarianční matice se **shrinkage** k jednotkové `(1−α)Σ + αI`, α = 0,25
+   (aby šla invertovat i při kolinearitě),
 3. Mahalanobis d² = zᵀ Σ⁻¹ z pro každou partii,
-4. **reweighting** – d² se přepočítá po odříznutí 10 % nejextrémnějších partií,
-   ať samotné odlehlé partie nenafouknou Σ a „neschovají se",
-5. d² → percentil „divnosti" přes χ²(D) (Wilsonova–Hilfertyho aproximace),
-6. u každé odlehlé partie **rozklad d² na příspěvky jednotlivých featur**
-   (zᵢ·(Σ⁻¹z)ᵢ) → které vlastnosti ji dělají divnou.
+4. **reweighting** – Σ se přepočítá jen z 90 % nejméně odlehlých partií, ať
+   samotné odlehlé partie Σ nenafouknou; medián d² se přeškáluje na teoretický
+   medián χ²(d),
+5. d² → percentil „divnosti" přes χ²(d) (Wilsonova–Hilfertyho aproximace),
+6. u každé odlehlé partie **rozklad d² na příspěvky vlastností** (zᵢ·(Σ⁻¹z)ᵢ) →
+   které ji dělají nejvíc odlišnou.
 
 Nic z toho nevolá engine ani numpy.
 """
@@ -39,8 +48,10 @@ _FEATURES: list[tuple[str, str, "callable"]] = [
     ("opposite_castle", "opačné rošády (0/1)",
      lambda f: 1.0 if f.castle_relation == "opačná strana" else 0.0),
     ("exchanges_early", "výměny figur do 20. tahu", lambda f: float(f.exchanges_early)),
-    ("max_deficit", "největší materiálové manko", lambda f: float(f.my_max_deficit)),
-    ("max_surplus", "největší materiálový náskok", lambda f: float(f.my_max_surplus)),
+    # materiál oříznutý na 6 – nezajímá nás „soupeř s holým králem tahá do matu",
+    # zajímá nás oběť / trvalé manko v jinak vyrovnané partii
+    ("max_deficit", "materiálové manko (max 6)", lambda f: float(min(6, f.my_max_deficit))),
+    ("max_surplus", "materiálový náskok (max 6)", lambda f: float(min(6, f.my_max_surplus))),
     ("islands", "pěšcové ostrovy", lambda f: float(f.islands)),
     ("tension", "napětí ve struktuře", lambda f: float(f.tension)),
     ("backward", "zpátečnický pěšec (0/1)", lambda f: float(f.backward)),
@@ -53,8 +64,6 @@ _FEATURES: list[tuple[str, str, "callable"]] = [
     ("pawn_storm", "pěšcová bouře (0/1)", lambda f: float(f.pawn_storm)),
     ("king_center", "král v centru (0/1)", lambda f: float(f.king_in_center)),
     ("center", "typ centra (otevř→zavř)", lambda f: _CENTER_ORD.get(f.center, 1.0)),
-    ("elo_delta", "Elo rozdíl (hráč − soupeř)",
-     lambda f: float(f.elo_delta) if f.elo_delta is not None else None),
     ("mate", "konec matem (0/1)", lambda f: 1.0 if f.ending == "mat" else 0.0),
     ("resign_time", "konec vzdáním / čas (0/1)",
      lambda f: 1.0 if f.ending == "vzdání / čas" else 0.0),
@@ -77,11 +86,12 @@ class Anomaly:
 
 @dataclass
 class AnomalyReport:
-    n_games: int
+    n_games: int                                       # partie po filtru „zajímavé"
     n_features: int
     features_used: list[str]
     anomalies: list[Anomaly]                           # top N podle d²
     median_d2: float
+    n_skipped: int = 0                                  # vyfiltrované (Elo/materiál/délka)
 
 
 # ------------------------------------------------------------------ lineární algebra
@@ -212,23 +222,48 @@ def _chi2_percentile(d2: float, k: int) -> float:
     return 0.5 * (1.0 + math.erf(zt / math.sqrt(2.0)))
 
 
+_MAX_ELO_DELTA = 350     # partie mimo tvé „pásmo" nejsou reprezentativní
+_MAX_SETTLED_MATERIAL = 6   # trvalý rozdíl > věž → výsledek nebyl na pořadu dne
+_MIN_MOVES = 12
+
+
+def _interesting(f) -> bool:
+    """Jen partie, které měly šanci být zajímavé: soupeř zhruba tvá síla,
+    výsledek se rozhodl něčím jiným než drtivou materiální převahou, ne
+    miniaturka / nedohráno."""
+    if f.result not in ("win", "draw", "loss"):
+        return False
+    if f.moves < _MIN_MOVES:
+        return False
+    if f.elo_delta is not None and abs(f.elo_delta) > _MAX_ELO_DELTA:
+        return False
+    if max(f.my_max_deficit, f.my_max_surplus) > _MAX_SETTLED_MATERIAL:
+        return False
+    return True
+
+
 # ------------------------------------------------------------------ hlavní funkce
 def detect_anomalies(games, player: str, colors: str = "both", keep=None,
                      top: int = 25, min_games: int = 25) -> AnomalyReport:
     idx, feats = [], []
+    skipped = 0
     for gi, g in enumerate(games):
         if keep is not None and not keep(g):
             continue
         if not game_matches(g, player, colors):
             continue
         try:
-            feats.append(_features(g, player))
-            idx.append(gi)
+            f = _features(g, player)
         except Exception:
             continue
+        if not _interesting(f):
+            skipped += 1
+            continue
+        feats.append(f)
+        idx.append(gi)
     n = len(feats)
     if n < min_games:
-        return AnomalyReport(n, 0, [], [], 0.0)
+        return AnomalyReport(n, 0, [], [], 0.0, skipped)
 
     # syrová matice + medián-imputace chybějících
     raw = [[fn(f) for _k, _l, fn in _FEATURES] for f in feats]
@@ -251,7 +286,7 @@ def detect_anomalies(games, player: str, colors: str = "both", keep=None,
         if Counter(col).most_common(1)[0][1] / n <= 0.99:
             use_cols.append(j)
     if len(use_cols) < 3:
-        return AnomalyReport(n, 0, [], [], 0.0)
+        return AnomalyReport(n, 0, [], [], 0.0, skipped)
     d = len(use_cols)
     # van der Waerdenova (rank → normální kvantil) transformace každého sloupce –
     # sjednotí tvary (šikmé počty, binární featury) na ~N(0,1)
@@ -297,4 +332,4 @@ def detect_anomalies(games, player: str, colors: str = "both", keep=None,
             reasons=reasons))
 
     return AnomalyReport(n, d, [labels[use_cols[c]] for c in range(d)],
-                         anomalies, round(med_d2, 1))
+                         anomalies, round(med_d2, 1), skipped)
