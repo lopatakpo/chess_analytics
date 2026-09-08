@@ -70,6 +70,7 @@ from PySide6.QtWidgets import (
 from accuracy import (
     TACT_CRIT_THRESHOLD,
     composite_index,
+    ipr_gap_significant,
     quick_summary,
     win_prob,
     win_series,
@@ -99,6 +100,7 @@ from move_class import (
 from heatmap_widget import HeatmapWidget
 from histogram_widget import HistogramChart
 from time_heatmap_widget import TimeHeatmap
+import opening_explorer
 from openings import analyze_openings, game_opening, personal_book_depth, repertoire_diversity
 from patterns import (
     analyze_patterns,
@@ -412,6 +414,48 @@ def _repertoire_text(div: dict, book) -> str:
     return "  ".join(parts)
 
 
+def _ipr_extended_lines(info: dict) -> list:
+    """Rozšířený odhad výkonnosti: interval spolehlivosti IPR (aby šlo poznat,
+    jestli je forma / rozdíl po barvě reálný, nebo jen šum z malého vzorku) a
+    přesnost vážená obtížností pozice (Regan styl)."""
+    lines = []
+    val, se = info.get("value"), info.get("value_se")
+    if val is not None and se:
+        lines.append(
+            f"Přesnost odhadu IPR: celkově {val} ± {se} "
+            f"(95 % ≈ ±{round(2 * se)}). Interval z rozptylu IPR mezi partiemi – "
+            f"úzký = odhad je pevný, široký = málo partií / kolísavá forma.")
+        rec, rse = info.get("recent"), info.get("recent_se")
+        if rec is not None and rse and rec != val:
+            real = ipr_gap_significant(rec, rse, val, se)
+            lines.append(
+                f"Poslední partie: {rec} ± {rse} "
+                f"({'+' if rec - val >= 0 else ''}{rec - val} vůči průměru) – "
+                f"{'reálný posun formy' if real else 'v mezích šumu'}.")
+        bc = info.get("by_color_ipr") or {}
+        if len(bc) == 2:
+            (ka, (ia, sa)), (kb, (ib, sb)) = bc.items()
+            if ia is not None and ib is not None and abs(ia - ib) >= 1:
+                real = ipr_gap_significant(ia, sa, ib, sb)
+                lines.append(
+                    f"Podle barvy: {ka} {ia} ± {sa or '?'}, {kb} {ib} ± {sb or '?'} – "
+                    f"rozdíl {abs(ia - ib)} bodů je "
+                    f"{'reálný' if real else 'v mezích šumu'}.")
+    adj, std = info.get("adj_accuracy"), info.get("std_accuracy")
+    if adj is not None and std is not None:
+        d = adj - std
+        lines.append(
+            f"Přesnost vážená obtížností pozice: {adj:.1f} % "
+            f"(standardní {std:.1f} %, {'+' if d >= 0 else ''}{d:.1f}). Každý tah "
+            f"vážen komplexitou pozice z multipv (rozptyl top-3 tahů enginu) místo "
+            f"lokálním rozptylem win% – „mrtvé“ pozice statistiku nenafukují, "
+            f"číslo je srovnatelnější mezi partiemi. Vyžaduje „důkladný rozbor“.")
+    elif val is not None:
+        lines.append("Přesnost vážená obtížností pozice: zapni „důkladný rozbor“ "
+                     "(multipv) a spusť znovu.")
+    return lines
+
+
 def _score_brush(score: float | None) -> QBrush:
     if score is None:
         return QBrush(QColor("#efefef"))
@@ -527,6 +571,7 @@ class MainWindow(QMainWindow):
         self._report_store = ReportStore()
         self._report_compare: list = []              # aktuálně porovnávané snímky
         self._report_builder: ReportBuilder | None = None
+        self._explorer_worker = None                  # porovnání zahájení s populací
 
         # přehrávání varianty na malé šachovnici
         self._var_base: chess.Board | None = None
@@ -1014,6 +1059,13 @@ class MainWindow(QMainWindow):
         self.cmb_op_color = self._make_color_combo(lambda: self._reanalyze_if_ready("op"))
         row.addWidget(self.cmb_op_color)
         row.addStretch(1)
+        self.btn_op_explorer = QPushButton("🌐 Porovnat s populací (lichess)")
+        self.btn_op_explorer.setToolTip(
+            "Stáhne z lichess Opening Exploreru winrate populace ve srovnatelném "
+            "Elo pásmu a tempu a porovná s tvým – kde jsi lepší / horší než průměr.\n"
+            "Jediná funkce, která chodí na síť. Výsledky se cachují.")
+        self.btn_op_explorer.clicked.connect(self._compare_openings_population)
+        row.addWidget(self.btn_op_explorer)
         lay.addLayout(row)
         self.op_summary = QLabel("Načti PGN databázi a vyber hráče.")
         self.op_summary.setWordWrap(True)
@@ -4104,6 +4156,8 @@ class MainWindow(QMainWindow):
                 gitem.addChild(self._acc_row(label, st))
             gitem.setExpanded(True)
 
+        self._add_kv_section(tree, cols, "Odhad výkonnosti (rozšířený)",
+                             _ipr_extended_lines(info))
         self._add_kv_section(tree, cols, "Charakter partií", result.get("character") or [])
         self._add_kv_section(tree, cols, "Dotahování", result.get("conversion") or [])
 
@@ -4447,6 +4501,140 @@ class MainWindow(QMainWindow):
         data = item.data(0, OP_GAME_ROLE)
         if data:
             self._jump_to_game(*data)
+
+    # ------------------------------------------- porovnání zahájení s populací
+    _TC_TO_SPEED = {"bullet": "bullet", "blitz": "blitz", "rapid": "rapid",
+                    "vážná": "classical", "korespondenční": "correspondence"}
+
+    def _compare_openings_population(self) -> None:
+        from filters import time_class
+        player = self.cmb_player.currentData()
+        colors = self.cmb_op_color.currentData()
+        if not self.games or not player:
+            QMessageBox.information(self, "Porovnání s populací",
+                                   "Načti PGN databázi a vyber hráče.")
+            return
+        if colors == "both":
+            QMessageBox.information(
+                self, "Porovnání s populací",
+                "Vyber „jako bílý“ nebo „jako černý“ – winrate populace je "
+                "pro každou stranu jiný, u „obě barvy“ by se to míchalo.")
+            return
+        if getattr(self, "_explorer_worker", None) is not None:
+            return
+        groups = analyze_openings(self.games, player, colors, keep=self._filter_keep)
+        tasks = opening_explorer.build_tasks(groups, self.games, colors)
+        if not tasks:
+            QMessageBox.information(
+                self, "Porovnání s populací",
+                f"Žádná varianta nemá aspoň {opening_explorer.MIN_PLAYER_GAMES} "
+                f"tvých partií – není co spolehlivě porovnat.")
+            return
+
+        want_white = colors == "white"
+        elos, speeds = [], set()
+        for g in self.games:
+            w = g.headers.get("White", "").strip().lower() == player.lower()
+            b = g.headers.get("Black", "").strip().lower() == player.lower()
+            if not (w or b) or (self._filter_keep and not self._filter_keep(g)):
+                continue
+            if (w and want_white) or (b and not want_white):
+                try:
+                    elos.append(int(g.headers.get("WhiteElo" if w else "BlackElo")))
+                except (TypeError, ValueError):
+                    pass
+                sp = self._TC_TO_SPEED.get(time_class(g))
+                if sp:
+                    speeds.add(sp)
+        mean_elo = sum(elos) / len(elos) if elos else None
+        ratings = opening_explorer.bands_for(mean_elo)
+        speeds_str = ",".join(sorted(speeds)) or opening_explorer.speeds_csv()
+
+        self.btn_op_explorer.setEnabled(False)
+        bar = QProgressBar()
+        bar.setRange(0, len(tasks))
+        bar.setFormat("lichess Opening Explorer… %v/%m")
+        self.statusBar().addWidget(bar)
+
+        w = opening_explorer.ExplorerWorker(tasks, ratings, speeds_str, self)
+        self._explorer_worker = w
+        meta = (player, self._color_label(self.cmb_op_color), ratings, speeds_str,
+                mean_elo)
+
+        def _cleanup():
+            self.statusBar().removeWidget(bar)
+            self.btn_op_explorer.setEnabled(True)
+
+        w.progress.connect(lambda d, t: bar.setValue(d))
+        w.failed.connect(lambda msg: (_cleanup(), QMessageBox.warning(
+            self, "Porovnání s populací", msg)))
+        w.finished_ok.connect(lambda rows: (_cleanup(),
+                                            self._show_explorer_dialog(rows, meta)))
+        # ref uvolnit až na QThread.finished (ne v done/failed – run() je ještě
+        # na zásobníku); parent=self drží objekt naživu do té doby
+        w.finished.connect(lambda: setattr(self, "_explorer_worker", None))
+        w.start()
+
+    def _show_explorer_dialog(self, rows: list, meta) -> None:
+        player, clabel, ratings, speeds_str, mean_elo = meta
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Zahájení vs populace (lichess)")
+        dlg.resize(940, 620)
+        lay = QVBoxLayout(dlg)
+        head = QLabel(
+            f"{player} {clabel} vs populace lichess · Elo pásma {ratings} · "
+            f"tempa {speeds_str}"
+            f"{f' · tvé průměrné Elo ~{round(mean_elo)}' if mean_elo else ''}.\n"
+            f"Δ = tvůj winrate − winrate populace ze srovnatelné pozice "
+            f"(remízy v obou počítány do jmenovatele). ▲/▼ = po Benjamini–Hochbergu "
+            f"(FDR 5 %) i s věcným rozdílem ≥ 5 p.b. se lišíš od populace. "
+            f"Dvojklik zavře.")
+        head.setWordWrap(True)
+        head.setStyleSheet("color:#555;")
+        lay.addWidget(head)
+
+        t = QTableWidget(len(rows), 6)
+        t.setHorizontalHeaderLabels(
+            ["Varianta", "Tvých", "Ty %", "Populace %", "Δ p.b.", "p"])
+        t.verticalHeader().setVisible(False)
+        t.setEditTriggers(QTableWidget.NoEditTriggers)
+        t.setSelectionBehavior(QTableWidget.SelectRows)
+        t.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        for c, wd in ((1, 60), (2, 66), (3, 90), (4, 74), (5, 66)):
+            t.setColumnWidth(c, wd)
+        for i, r in enumerate(rows):
+            arrow = ""
+            if r.get("sig"):
+                arrow = "  ▲" if r["delta"] > 0 else "  ▼"
+            nrepr = ""
+            if r.get("n_repr") and r.get("n_total") and r["n_repr"] < r["n_total"]:
+                nrepr = f"  ({r['n_repr']}/{r['n_total']} v této pozici)"
+            cells = [
+                r["name"] + arrow + nrepr,
+                str(r["n_player"]),
+                f"{r['wr_player'] * 100:.0f}",
+                f"{r['wr_pop'] * 100:.0f}  (n={r['n_pop']})",
+                f"{r['delta'] * 100:+.0f}",
+                f"{r['p']:.3f}" if r["p"] is not None else "–",
+            ]
+            for c, txt in enumerate(cells):
+                it = QTableWidgetItem(txt)
+                if c in (1, 2, 3, 4, 5):
+                    it.setTextAlignment(Qt.AlignCenter)
+                if c == 0 and r.get("sig"):
+                    f = it.font()
+                    f.setBold(True)
+                    it.setFont(f)
+                if c == 4:
+                    it.setForeground(QBrush(QColor(
+                        "#2e7d32" if r["delta"] > 0 else "#c62828")))
+                t.setItem(i, c, it)
+        t.itemDoubleClicked.connect(lambda *_: dlg.accept())
+        lay.addWidget(t, stretch=1)
+        btn = QPushButton("Zavřít")
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn, alignment=Qt.AlignRight)
+        dlg.exec()
 
     # ------------------------------------------------- nejpodivnější partie
     def _open_anomaly(self) -> None:

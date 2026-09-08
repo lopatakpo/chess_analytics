@@ -97,8 +97,14 @@ def _std(xs: list[float]) -> float:
     return math.sqrt(sum((x - m) ** 2 for x in xs) / len(xs))
 
 
-def game_accuracy(evals: list[int], wdls=None) -> dict:
-    """{'white': %, 'black': %} – lichess styl: průměr váženého a harmonického průměru."""
+def game_accuracy(evals: list[int], wdls=None, weights=None) -> dict:
+    """{'white': %, 'black': %} – lichess styl: průměr váženého a harmonického průměru.
+
+    ``weights`` (volitelně, per půltah k) přebije standardní váhu (lokální rozptyl
+    win% – proxy „ostrá fáze partie") vlastní vahou obtížnosti pozice, např.
+    komplexitou z multipv (rozptyl top tahů enginu). Pak jde o *counterfactual*
+    obtížnost – jak zlé byly alternativy –, ne jen o to, co se v partii semlelo;
+    číslo zůstává na stejné škále (harmonická půlka se nemění)."""
     mv = per_move(evals, wdls)
     if not mv:
         return {"white": None, "black": None}
@@ -106,18 +112,21 @@ def game_accuracy(evals: list[int], wdls=None) -> dict:
     window = max(2, min(8, len(mv) // 10))
     res: dict = {}
     for white in (True, False):
-        accs, weights = [], []
+        accs, wts = [], []
         for k, m in enumerate(mv):
             if m["white"] != white:
                 continue
-            lo, hi = max(0, k - window), min(len(win_seq), k + window + 1)
-            weights.append(max(0.5, _std(win_seq[lo:hi])))
+            if weights is not None and k < len(weights):
+                wts.append(max(0.03, float(weights[k])))
+            else:
+                lo, hi = max(0, k - window), min(len(win_seq), k + window + 1)
+                wts.append(max(0.5, _std(win_seq[lo:hi])))
             accs.append(m["acc"])
         key = "white" if white else "black"
         if not accs:
             res[key] = None
             continue
-        wmean = sum(a * w for a, w in zip(accs, weights)) / sum(weights)
+        wmean = sum(a * w for a, w in zip(accs, wts)) / sum(wts)
         harm = len(accs) / sum(1.0 / max(a, 1e-6) for a in accs)
         res[key] = round((wmean + harm) / 2.0, 1)
     return res
@@ -220,6 +229,17 @@ def ipr_from_acpl(acpl: float) -> float:
     """Hrubý odhad Ela z ACPL: Elo ≈ 3940 − 580·ln(ACPL). Orientační (spíš blitz/rapid)."""
     a = max(3.0, min(300.0, acpl))
     return max(400.0, min(2900.0, 3940.0 - 580.0 * math.log(a)))
+
+
+def ipr_gap_significant(ipr_a: float, se_a: float, ipr_b: float, se_b: float,
+                        k: float = 2.0) -> bool:
+    """Liší se dva odhady IPR (každý s vlastní směrodatnou chybou) o víc než
+    ``k`` směrodatných chyb rozdílu? Pro „je forma / rozdíl po barvě reálný, nebo
+    je to šum z malého vzorku"."""
+    if se_a is None or se_b is None:
+        return False
+    se = math.sqrt(se_a * se_a + se_b * se_b)
+    return se > 0 and abs(ipr_a - ipr_b) > k * se
 
 
 def _solve3(mat: list[list[float]], rhs: list[float]):

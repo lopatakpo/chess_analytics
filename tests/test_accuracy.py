@@ -4,7 +4,7 @@ import pytest
 from accuracy import (
     win_pct, win_prob, win_series, expected_points, move_accuracy, classify,
     per_move, game_accuracy, quick_summary, composite_index, ipr_from_acpl,
-    fit_linear, WIN_INACC, WIN_MIST, WIN_BLUND,
+    ipr_gap_significant, fit_linear, WIN_INACC, WIN_MIST, WIN_BLUND,
 )
 
 
@@ -93,6 +93,32 @@ def test_game_accuracy_perfektni_partie():
 def test_game_accuracy_prazdne_evaly():
     assert game_accuracy([]) == {"white": None, "black": None}
     assert game_accuracy([0]) == {"white": None, "black": None}
+
+
+def test_game_accuracy_weights_zustava_na_skale():
+    evals = [0, -40, 10, -300, 0, 60, -20, 0, 30, -10, 0]
+    std = game_accuracy(evals)
+    w = game_accuracy(evals, weights=[0.2] * len(evals))
+    # obě 0–100, pořád rozumně blízko (harmonická půlka se nemění)
+    assert 0.0 <= w["white"] <= 100.0
+    assert abs(w["white"] - std["white"]) < 25.0
+
+
+def test_game_accuracy_weights_zvysi_vahu_tezkych_pozic():
+    # bílý (tah k=2) zahraje jednu hrubku, jinak drží
+    evals = [0, 0, 0, -400, 0, 0, 0, 0, 0, 0, 0]
+    heavy = [0.01] * 11
+    heavy[2] = 1.0                       # skoro všechna váha na hrubku bílého
+    down = game_accuracy(evals, weights=heavy)
+    light = game_accuracy(evals, weights=[0.3] * 11)
+    assert down["white"] < light["white"]
+
+
+def test_ipr_gap_significant():
+    assert ipr_gap_significant(1800, 30, 1600, 30) is True   # 200 >> ~85
+    assert ipr_gap_significant(1800, 30, 1780, 30) is False  # 20 << ~85
+    assert ipr_gap_significant(1800, None, 1600, 30) is False
+    assert ipr_gap_significant(2000, 200, 1700, 200) is False  # velká chyba → nejistý
 
 
 def test_game_accuracy_horsi_hra_nizsi_cislo():

@@ -4,7 +4,7 @@ import math
 import pytest
 
 from stats_util import (
-    norm_cdf, two_prop_p, bh_reject, winrate_outliers, wilson_interval,
+    norm_cdf, two_prop_p, one_prop_p, bh_reject, winrate_outliers, wilson_interval,
     estimate_shrink_m, shrink_rate, elo_expected, elo_expected_from_delta,
     luck_z, kaplan_meier, logistic_fit, logistic_predict,
 )
@@ -36,6 +36,23 @@ def test_two_prop_p_je_v_rozsahu_0_1():
     for args in [(1, 3, 90, 100), (0, 50, 50, 50), (7, 7, 0, 7)]:
         p = two_prop_p(*args)
         assert p is None or 0.0 <= p <= 1.0
+
+
+def test_one_prop_p_proti_zname_referenci():
+    # 55/100 proti referenci 0.55 → p ~ 1
+    assert one_prop_p(55, 100, 0.55) == pytest.approx(1.0, abs=1e-6)
+    # 70/100 proti 0.50 → jasně významné
+    assert one_prop_p(70, 100, 0.50) < 0.001
+    # menší vzorek, stejný rozdíl → větší p
+    assert one_prop_p(7, 10, 0.50) > one_prop_p(70, 100, 0.50)
+
+
+def test_one_prop_p_okrajove():
+    assert one_prop_p(0, 0, 0.5) is None
+    assert one_prop_p(5, 10, 0.0) is None
+    assert one_prop_p(5, 10, 1.0) is None
+    p = one_prop_p(3, 10, 0.5)
+    assert 0.0 <= p <= 1.0
 
 
 def test_bh_reject_znama_sekvence():

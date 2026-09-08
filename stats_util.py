@@ -29,6 +29,19 @@ def two_prop_p(k1: int, n1: int, k2: int, n2: int) -> float | None:
     return max(0.0, min(1.0, 2.0 * (1.0 - norm_cdf(abs(z)))))
 
 
+def one_prop_p(k: int, n: int, p0: float) -> float | None:
+    """Oboustranná p-hodnota jednovýběrového z-testu: liší se podíl k/n od *známé*
+    referenční hodnoty ``p0`` (např. winrate populace z Opening Exploreru, kde je
+    vzorek tak velký, že se bere jako pevný)? ``None`` když n ≤ 0."""
+    if n <= 0 or not (0.0 < p0 < 1.0):
+        return None
+    se = math.sqrt(p0 * (1.0 - p0) / n)
+    if se == 0.0:
+        return 1.0
+    z = (k / n - p0) / se
+    return max(0.0, min(1.0, 2.0 * (1.0 - norm_cdf(abs(z)))))
+
+
 def bh_reject(pvals: list, alpha: float = 0.05) -> list[bool]:
     """Benjamini–Hochberg (kontrola FDR): pro každou p-hodnotu vrátí True, když
     se zamítá H0 při FDR ``alpha``. ``None`` p-hodnoty → False."""

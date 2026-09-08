@@ -10,12 +10,14 @@ Desktopová aplikace (PySide6 / Qt) pro:
   přesnost (lichess vzorec) a průměrná ztráta (ACPL) pro obě strany,
 - **rozbor přesnosti přes databázi** (karta *Přesnost*) – přesnost, ACPL, ztráta
   v očekávaných bodech, hrubky/100 tahů, shoda s enginem (T1), kompozitní index,
-  odhad výkonnosti (IPR), charakter partií (volatilita, ostrost, komplexita)
-  a dotahování vyhraných/prohraných pozic, s rozpadem podle barvy, fáze, tempa
-  a roku; výsledky se cachují,
+  odhad výkonnosti (IPR – s intervalem spolehlivosti a testem, jestli je forma /
+  rozdíl po barvě reálný), charakter partií (volatilita, ostrost, komplexita,
+  přesnost vážená obtížností pozice) a dotahování vyhraných/prohraných pozic,
+  s rozpadem podle barvy, fáze, tempa a roku; výsledky se cachují,
 - **rozbor hráče** nad databází partií: strom zahájení z aktuální pozice, heatmapa tahů,
-  rozbor zahájení podle ECO (+ **diverzita repertoáru** a **hloubka teorie/book exit**
-  z vlastní historie hráče) a rozbor koncovek podle kategorií (vše s úspěšností),
+  rozbor zahájení podle ECO (+ **diverzita repertoáru**, **hloubka teorie/book exit**
+  z vlastní historie hráče a **porovnání winrate s populací** přes lichess Opening
+  Explorer) a rozbor koncovek podle kategorií (vše s úspěšností),
 - **statistické vzorce** (karta *Vzorce*): winrate podle rošády, výměny dam, materiálu,
   pěšcové struktury, konce partie, délky partie a **formy po předchozí partii**;
   plus **Elo-adjusted výkonnost** a „štěstí" (z-skóre),
@@ -68,6 +70,7 @@ a nejsou v repu (viz `.gitignore`):
 | `analysis_cache.json.gz` | výsledky rozborů partií enginem (gzip, ~3× menší; starší `analysis_cache.json` se při prvním uložení automaticky převede) |
 | `tactics_progress.json` | postup v taktických úlohách (viděno/vyřešeno, hodnocení, opakování) |
 | `player_reports.json` | uložené reporty hráčů (karta *Report*) |
+| `opening_explorer_cache.json.gz` | cache odpovědí lichess Opening Exploreru (porovnání zahájení s populací) |
 
 `analysis_cache.json.gz` jde smazat v menu **Engine → Smazat cache rozborů partií…**,
 postup v úlohách přes **Engine → Smazat postup v taktických úlohách…**.
@@ -407,6 +410,23 @@ Dole je sbalený seznam **jednotlivých partií** (dvojklik partii otevře) – 
 které partie táhnou průměr dolů; má stejné sloupce jako souhrn, včetně EP ztráty
 a T1 % za tu jednu partii.
 
+Sekce **Odhad výkonnosti (rozšířený)** přidává statistickou rigoróznost k IPR
+(Regan-style):
+
+- **interval spolehlivosti IPR** (celkově i „poslední partie") – z rozptylu
+  per-partii IPR. Úzký = odhad je pevný, široký = málo partií / kolísavá forma.
+  U formy a rozdílu po barvě se rovnou řekne, jestli je rozdíl **reálný**, nebo
+  jen šum z malého vzorku (víc než 2 směrodatné chyby rozdílu),
+- **přesnost vážená obtížností pozice** (jen „důkladný rozbor") – místo standardní
+  váhy (lokální rozptyl win% – proxy „ostrá fáze") se každý tah váží
+  *komplexitou* pozice z multipv (rozptyl top-3 tahů enginu). Pozice, kde je
+  jedno co zahraješ, pak přesnost nenafukují; číslo je **srovnatelnější mezi
+  partiemi**. Zůstává na stejné škále (harmonická půlka lichess vzorce se nemění).
+
+Absolutní „z-skóre kvality tahů vs. tvé Elo" appka **záměrně neukazuje** – křivka
+`Elo ≈ 3940 − 580·ln(ACPL)` je kalibrovaná spíš pro blitz/rapid a u bullet
+výkon výrazně podhodnocuje, takže by takové porovnání bylo zavádějící.
+
 Pod sekcemi *Charakter partií* / *Dotahování* je sbalený seznam **Brilantní tahy
 hráče** – brilantní tahy hráče (oběť materiálu ve zdravé pozici) z rozboru,
 s číslem tahu; **dvojklik skočí na ten tah v partii**.
@@ -452,7 +472,7 @@ přesnější shodu T1. Přibližně **2× pomalejší** než základní rozbor;
 zapnout i dodatečně, cache si k partiím, které to ještě nemají, tuto informaci
 při dalším spuštění dopočítá (partie, co ji už mají, se přeskočí).
 
-Výsledky rozborů partií se ukládají do **`analysis_cache.json`** vedle aplikace
+Výsledky rozborů partií se ukládají do **`analysis_cache.json.gz`** vedle aplikace
 (klíč = hlavičky + tahy, s hloubkou; navíc WDL a top-3 tahy, když je k dispozici),
 takže opětovné spuštění je okamžité a cache sdílí i rozbor jedné partie na kartě
 *Partie*. Běží na pozadí, jde přerušit. Orientační rychlost: ~1 s/partie při
@@ -496,6 +516,25 @@ Nad stromem je navíc:
   nehrál – transpozice se počítají, žádná externí databáze ani engine
   netřeba). Rozdíl mezi nimi ukazuje, jestli hráč jde za katalogizovanou
   teorii (vlastní příprava), nebo naopak i „knihovní" tahy nemá zažité.
+
+#### Porovnání s populací (tlačítko *🌐 Porovnat s populací (lichess)*)
+
+Pro nejhranější varianty (vyžaduje vybranou barvu – ne „obě") stáhne z veřejného
+**lichess Opening Exploreru** winrate populace ze **srovnatelné pozice**, v Elo
+pásmu kolem tvého průměrného Ela a v tempech, která reálně hraješ. Otevře tabulku
+seřazenou podle **Δ = tvůj winrate − winrate populace** – hned vidíš, které linky
+jsou tvoje zbraň a které hraješ hůř než průměr.
+
+- srovnání je **like-for-like**: tvůj winrate se počítá jen z partií, které prošly
+  tou samou reprezentativní (modální) pozicí varianty; kolik jich to je, ukazuje
+  sloupec „(N/M v této pozici)",
+- **▲ / ▼** = po Benjamini–Hochbergově korekci (FDR 5 %) a s věcným rozdílem
+  ≥ 5 p.b. se od populace lišíš (jednovýběrový z-test proti populaci jako *známé*
+  referenci – populace je tak velká, že se bere jako pevná),
+- je to **jediná funkce, která chodí na síť**. Spouští se ručně, výsledky se
+  cachují gzipovaně do `opening_explorer_cache.json.gz` (429 z API řeší jedním
+  delším čekáním). Ověřování certifikátu použije `certifi` (nese si ho `requests`),
+  když je k dispozici, jinak systémové CA.
 
 ### Wilsonův interval a shrinkage (tooltip u winrate)
 
@@ -687,7 +726,7 @@ prohrává spíš v krátkých, nebo dlouhých partiích.
 ### Taktika (karta *Taktika*)
 
 Taktické úlohy **vytažené z hráčových rozebraných partií** (`tactics.py`) – žádný
-engine navíc, jen se čte, co je v `analysis_cache.json` (ideálně z „důkladného
+engine navíc, jen se čte, co je v `analysis_cache.json.gz` (ideálně z „důkladného
 rozboru", kvůli top-3 tahům). Úloha = pozice, kde strana na tahu měla **silný
 forsírující tah** (braní / šach / proměna) s velkým dopadem na šanci na výhru,
 a hráč / soupeř ho buď:
@@ -814,6 +853,7 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `time_heatmap_widget.py` | heatmapa winrate podle dne v týdnu a hodiny (QPainter) |
 | `patterns.py` | statistické vzorce partií (rošáda, dámy, materiál, struktura, …) + lehké průchody pro kartu Grafy |
 | `openings.py` | zařazení partií podle zahájení (ECO, **s transpozicemi** – podle pozic, ne pořadí tahů), diverzita repertoáru, hloubka teorie/book exit |
+| `opening_explorer.py` | porovnání winrate zahájení hráče s populací přes lichess Opening Explorer (síť + gzip cache) |
 | `eco.tsv` | databáze zahájení ECO (lichess `chess-openings`, ~3800 variant) |
 | `endgames.py` | rozpoznání a kategorizace koncovek |
 | `tactics.py` | taktické úlohy z rozboru partií: motivy, obtížnost, tolerance, opakování SM-2 (`tactics_progress.json`) |
@@ -823,11 +863,12 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `report_charts.py` | srovnávací grafy pro kartu Report (jedna série na hráče, ze snímků) |
 | `report_export.py` | export porovnání hráčů do PDF (`QTextDocument` → `QPrinter`) |
 | `sample.pgn` | ukázkové partie (Immortal Game, Opera Game) |
-| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), statistika, cache, anomálie |
+| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, statistika, cache, anomálie |
 
 ## Testy
 
-Testy pokrývají moduly bez enginu a bez GUI (čistá matematika a logika):
+Testy pokrývají moduly bez enginu a bez GUI (čistá matematika a logika; síť
+u `opening_explorer` se v testech mockuje):
 
 ```bash
 pip install -r requirements-dev.txt

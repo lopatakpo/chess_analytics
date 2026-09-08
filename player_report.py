@@ -24,10 +24,10 @@ _STORE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "player_r
 
 # Klíče z accuracy["overall"] (dict z accuracy_batch._final), co si necháme.
 _ACC_OVERALL_KEYS = (
-    "games", "moves", "accuracy", "acpl", "ep_per_game", "blund_100", "mist_100",
-    "inacc_100", "t1", "tact", "index", "ipr", "conversion", "resourcefulness",
-    "ep_wasted", "had_win", "had_loss", "volatility", "reversals", "sharpness",
-    "complexity",
+    "games", "moves", "accuracy", "adj_accuracy", "acpl", "ep_per_game",
+    "blund_100", "mist_100", "inacc_100", "t1", "tact", "index", "ipr", "ipr_se",
+    "conversion", "resourcefulness", "ep_wasted", "had_win", "had_loss",
+    "volatility", "reversals", "sharpness", "complexity",
 )
 
 

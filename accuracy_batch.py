@@ -87,11 +87,13 @@ def _acc0() -> dict:
     return {"games": 0, "moves": 0, "cp_loss": 0.0, "ep_loss": 0.0,
             "inacc": 0, "mist": 0, "blund": 0, "t1": 0, "t1_den": 0,
             "cwl_num": 0.0, "cwl_den": 0.0, "tact": 0, "tact_den": 0,
-            "acc_sum": 0.0, "acc_n": 0, "ipr_sum": 0.0, "ipr_n": 0,
+            "acc_sum": 0.0, "acc_n": 0, "ipr_sum": 0.0, "ipr_sq": 0.0, "ipr_n": 0,
             "had_win": 0, "won": 0, "had_loss": 0, "not_lost": 0,
             "ep_wasted_sum": 0.0,
             "vol_sum": 0.0, "vol_n": 0, "rev_sum": 0.0,
-            "sharp_sum": 0.0, "sharp_n": 0, "cx_sum": 0.0, "cx_n": 0}
+            "sharp_sum": 0.0, "sharp_n": 0, "cx_sum": 0.0, "cx_n": 0,
+            # přesnost vážená obtížností pozice (komplexita z multipv, Regan styl)
+            "adj_sum": 0.0, "adj_n": 0}
 
 
 def _merge(dst: dict, stats: dict, game_acc=None, ipr=None, conv: dict | None = None,
@@ -113,11 +115,15 @@ def _merge(dst: dict, stats: dict, game_acc=None, ipr=None, conv: dict | None = 
         if rec.get("mean_cx") is not None:
             dst["cx_sum"] += rec["mean_cx"]
             dst["cx_n"] += 1
+        if rec.get("adj_acc") is not None:
+            dst["adj_sum"] += rec["adj_acc"]
+            dst["adj_n"] += 1
     if game_acc is not None:
         dst["acc_sum"] += game_acc
         dst["acc_n"] += 1
     if ipr is not None:
         dst["ipr_sum"] += ipr
+        dst["ipr_sq"] += ipr * ipr
         dst["ipr_n"] += 1
     if conv is not None and conv.get("result_known"):
         if conv["had_win"]:
@@ -142,6 +148,13 @@ def _final(a: dict) -> dict:
     conversion = round(a["won"] * 100 / a["had_win"], 1) if a["had_win"] else None
     resourcefulness = round(a["not_lost"] * 100 / a["had_loss"], 1) if a["had_loss"] else None
     ep_wasted = round(a["ep_wasted_sum"] / a["had_win"], 2) if a["had_win"] else None
+    adj_acc = round(a["adj_sum"] / a["adj_n"], 1) if a["adj_n"] else None
+    ipr_se = None
+    if a["ipr_n"] >= 3:
+        n = a["ipr_n"]
+        mu = a["ipr_sum"] / n
+        var = max(0.0, (a["ipr_sq"] - n * mu * mu) / (n - 1))
+        ipr_se = round(math.sqrt(var / n))
     return {
         "games": a["games"], "moves": a["moves"],
         "accuracy": acc, "acpl": acpl,
@@ -159,6 +172,7 @@ def _final(a: dict) -> dict:
         "reversals": round(a["rev_sum"] / a["vol_n"], 1) if a["vol_n"] else None,
         "sharpness": round(a["sharp_sum"] / a["sharp_n"], 2) if a["sharp_n"] else None,
         "complexity": round(a["cx_sum"] / a["cx_n"], 2) if a["cx_n"] else None,
+        "adj_accuracy": adj_acc, "ipr_se": ipr_se,
     }
 
 
@@ -328,6 +342,15 @@ class AccuracyBatch(QThread):
 
         mv_all = accuracy.per_move(evals, wdls)
 
+        # přesnost vážená obtížností pozice: místo standardní váhy (lokální rozptyl
+        # win% – „ostrá fáze partie") se každý tah váží komplexitou pozice z multipv
+        # (rozptyl top-3 tahů enginu) → counterfactual obtížnost. „Mrtvé" pozice,
+        # kde je jedno co zahraješ, statistiku nenafouknou; srovnatelnější mezi
+        # partiemi. Stejná škála (harmonická půlka vzorce se nemění). Jen thorough.
+        adj_acc = None
+        if cx is not None:
+            adj_acc = accuracy.game_accuracy(evals, wdls, weights=cx).get(side)
+
         crit_bins = None
         if crit is not None:
             sums = [0.0] * N_CRIT_BINS
@@ -415,6 +438,7 @@ class AccuracyBatch(QThread):
 
             "mean_sharp": _mean(sharp[k] for k in my_idx) if sharp else None,
             "mean_cx": _mean(cx[k] for k in my_idx) if cx else None,
+            "adj_acc": adj_acc,
             "tact_pct": round(s["tact"] * 100 / s["tact_den"], 1) if s["tact_den"] else None,
             "crit_bins": crit_bins,
             "cc_counts": cc_counts,
@@ -522,13 +546,25 @@ class AccuracyBatch(QThread):
         iprs = [r["ipr"] for r in records if r["ipr"] is not None]
         ratings = [r["rating"] for r in records if r["rating"] is not None]
         recent = [r["ipr"] for r in records[:10] if r["ipr"] is not None]
+        mean_rating = round(sum(ratings) / len(ratings)) if ratings else None
+        ov_final = _final(overall)
+        recent_acc = _acc0()
+        for r in records[:10]:
+            _merge(recent_acc, r["side"], r["acc"], r["ipr"], r["conv"], rec=r)
+        recent_final = _final(recent_acc)
         ipr_info = {
             "value": round(sum(iprs) / len(iprs)) if iprs else None,
+            "value_se": ov_final.get("ipr_se"),
             "anchor": round(model["y0"]) if model.get("kind") == "anchor" else None,
-            "mean_rating": round(sum(ratings) / len(ratings)) if ratings else None,
+            "mean_rating": mean_rating,
             "recent": round(sum(recent) / len(recent)) if recent else None,
+            "recent_se": recent_final.get("ipr_se"),
             "method": model.get("method", "hrubý odhad z ACPL"),
             "n_rated": model.get("n_rated", 0),
+            "adj_accuracy": ov_final.get("adj_accuracy"),
+            "std_accuracy": ov_final.get("accuracy"),
+            "by_color_ipr": {k: (_final(v).get("ipr"), _final(v).get("ipr_se"))
+                             for k, v in by_color.items() if v["ipr_n"] >= 3},
         }
 
         crit_accuracy = None
