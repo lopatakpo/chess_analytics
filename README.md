@@ -17,7 +17,8 @@ Desktopová aplikace (PySide6 / Qt) pro:
 - **rozbor hráče** nad databází partií: strom zahájení z aktuální pozice, heatmapa tahů,
   rozbor zahájení podle ECO (+ **diverzita repertoáru**, **hloubka teorie/book exit**
   z vlastní historie hráče a **porovnání úspěšnosti s populací** přes lichess Opening
-  Explorer) a rozbor koncovek podle kategorií (vše s úspěšností),
+  Explorer) a rozbor koncovek podle kategorií (vše s úspěšností; koncovky navíc
+  umí **populační srovnání z měsíčního lichess dumpu** – `.pgn.zst` streamovaně),
 - **statistické vzorce** (karta *Vzorce*): úspěšnost podle rošády, výměny dam, materiálu,
   pěšcové struktury, konce partie, délky partie a **formy po předchozí partii**;
   plus **Elo-adjusted výkonnost** a „štěstí" (z-skóre),
@@ -50,7 +51,9 @@ cd chess_app
 pip install -r requirements.txt
 ```
 
-Vyžaduje Python 3.10+.
+Vyžaduje Python 3.10+. Čtení `.pgn.zst` (dumpy lichess) funguje bez další
+závislosti na Pythonu 3.14+ (`zstd` ve stdlib); na starším Pythonu k tomu
+doinstaluj `zstandard`.
 
 ### Engine (Stockfish)
 
@@ -74,6 +77,7 @@ a nejsou v repu (viz `.gitignore`):
 | `tactics_progress.json` | postup v taktických úlohách (viděno/vyřešeno, hodnocení, opakování) |
 | `player_reports.json` | uložené reporty hráčů (karta *Report*) |
 | `opening_explorer_cache.json.gz` | cache odpovědí lichess Opening Exploreru (porovnání zahájení s populací) |
+| `endgame_population.json.gz` | populační statistika koncovek z lichess dumpu (i rozpracovaná – jde navázat) |
 
 `analysis_cache.json.gz` jde smazat v menu **Engine → Smazat cache rozborů partií…**,
 postup v úlohách přes **Engine → Smazat postup v taktických úlohách…**.
@@ -162,7 +166,7 @@ Ve Windows lze poklikat na `spustit.bat`.
 | Otočit šachovnici | `F` nebo `⟳ Otočit` |
 | Skok na konkrétní tah | klik do seznamu tahů (záložka *Partie*) |
 | Zahrát vlastní tah | klik na figuru + klik na cílové pole |
-| Otevřít PGN | `Ctrl+O` |
+| Otevřít PGN (i `.pgn.zst` / `.gz`) | `Ctrl+O` |
 | Vložit PGN z textu | menu Soubor |
 | Stáhnout partie z lichess / chess.com | menu Soubor |
 
@@ -615,6 +619,33 @@ kategorie). Na každé úrovni je počet partií, úspěšnost a pruh V/R/P. **D
 *Partie a rozbor* a nastaví šachovnici na tah, kterým se partie stala danou
 koncovkou (u pěšcovek na chvíli, kdy měla daný počet pěšců).
 
+#### Populace z lichess dumpu (tlačítko *📥 Populace z lichess dumpu…*)
+
+Z **měsíčního dumpu lichess** (`lichess_db_standard_rated_YYYY-MM.pgn.zst`
+z <https://database.lichess.org/>) spočítá **populační statistiku koncovek** –
+jak drží / konvertuje daný typ koncovky celá populace ve srovnatelném Elo pásmu
+a tempu:
+
+- projede se **streamovaně** (`pgn_stream.py` + `endgame_dump.py`) – partie se
+  nedrží v paměti, plochá spotřeba, jede na pozadí (celý měsíc = klidně hodiny;
+  `.zst` čte přes stdlib `compression.zstd` na Pythonu 3.14+, jinak balíček
+  `zstandard`),
+- levný filtr podle hlaviček (**obě strany v Elo pásmu**, vybraná tempa, dohraná
+  partie), pak přehrání tahů a při **prvním vstupu do každé kategorie** zápis
+  výsledku z pohledu **materiálově silnější strany**,
+- výsledek: tabulka kategorií s **remízovostí při vyrovnaném materiálu** a
+  **konverzí +1 / +2 pěšce** (dvojklik = rozpad podle Ela a tempa),
+- **overlay na kartě Koncovky**: v tooltipu u každé kategorie se ukáže populační
+  remízovost a konverze pro tvé přibližné Elo, takže vidíš, jestli danou koncovku
+  hraješ líp nebo hůř než vrstevníci,
+- průběžně se checkpointuje do `endgame_population.json.gz`; nedokončený běh jde
+  **navázat** (stream se nepřetáčí, jen se rychle přeskočí zpracované partie).
+
+Karta *Otevřít PGN* teď taky umí `.pgn.zst` / `.pgn.gz` / `.pgn.bz2` / `.pgn.xz`
+napřímo. Pozor: **celý** měsíční dump (desítky milionů partií) se do aplikace
+nenačte – ta drží partie v paměti; tenhle nástroj proto streamuje a nic si
+nenechává.
+
 ### Grafy (karta *Grafy*)
 
 Devatenáct grafů, přepínač **Graf:** nahoře; podle typu se objeví ještě **Ukazatel**
@@ -855,6 +886,8 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `main_window.py` | hlavní okno, navigace, propojení částí |
 | `board_widget.py` | vykreslení šachovnice (chess.svg → QSvgWidget), velká i malá |
 | `pgn_game.py` | načtení PGN, model partie a pozic |
+| `pgn_stream.py` | streamované čtení PGN i z `.pgn.zst` / `.gz` / `.bz2` / `.xz`, po jedné partii |
+| `endgame_dump.py` | populační statistika koncovek z měsíčního dumpu lichess (stream, na pozadí) |
 | `engine_analyzer.py` | vlákno s UCI enginem a průběžnou analýzou pozice |
 | `game_analyzer.py` | vlákno pro rozbor celé partie (značky chyb, ACPL, nejlepší tahy) |
 | `move_class.py` | klasifikace tahů ve stylu chess.com (Nejlepší…Hrubka + Brilantní/Skvělý tah/Přehlédnutí) |
@@ -885,7 +918,7 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `report_charts.py` | srovnávací grafy pro kartu Report (jedna série na hráče, ze snímků) |
 | `report_export.py` | export porovnání hráčů do PDF (`QTextDocument` → `QPrinter`) |
 | `sample.pgn` | ukázkové partie (Immortal Game, Opera Game) |
-| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, stažení partií, statistika, cache, anomálie |
+| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, stažení partií, streamované čtení PGN, populace koncovek, statistika, cache, anomálie |
 
 ## Testy
 

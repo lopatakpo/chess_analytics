@@ -21,6 +21,7 @@ analysis_cache.json.gz
 tactics_progress.json
 player_reports.json
 opening_explorer_cache.json.gz
+endgame_population.json.gz
 *.json.tmp
 *.json.gz.tmp
 feature_cache.json.gz

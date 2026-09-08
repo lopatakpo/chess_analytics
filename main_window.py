@@ -83,6 +83,7 @@ from board_widget import BoardWidget
 from tactics import STATUS_LABEL, TacticsStore, extract_puzzles
 from motifs import MOTIF_LABEL, MOTIF_ORDER, motif_labels
 from charakter import volatility as _volatility
+import endgame_dump
 from endgames import PIECE_LEGEND, analyze_endgames, pawns_cz, sort_key
 from engine_analyzer import EngineWorker
 from guess_move import GuessMoveDialog
@@ -155,8 +156,11 @@ class PgnLoader(QThread):
 
     def run(self) -> None:
         try:
-            fh = (open(self._path, "r", encoding="utf-8-sig", errors="replace")
-                  if self._path is not None else io.StringIO(self._text))
+            if self._path is not None:
+                from pgn_stream import open_text
+                fh = open_text(self._path)      # .pgn i .pgn.zst / .gz / .bz2 / .xz
+            else:
+                fh = io.StringIO(self._text)
             games = []
             try:
                 for game in read_games(fh):
@@ -577,6 +581,8 @@ class MainWindow(QMainWindow):
         self._report_builder: ReportBuilder | None = None
         self._explorer_worker = None                  # porovnání zahájení s populací
         self._dl_worker = None                        # stažení partií z lichess/chess.com
+        self._eg_dump_worker = None                   # populace koncovek z lichess dumpu
+        self._eg_pop = endgame_dump.load_population()  # uložená populační statistika koncovek
 
         # přehrávání varianty na malé šachovnici
         self._var_base: chess.Board | None = None
@@ -1110,6 +1116,14 @@ class MainWindow(QMainWindow):
         self.btn_eg_run.clicked.connect(lambda: self._run_analysis("eg"))
         row.addWidget(self.btn_eg_run)
         row.addStretch(1)
+        self.btn_eg_pop = QPushButton("📥 Populace z lichess dumpu…")
+        self.btn_eg_pop.setToolTip(
+            "Z měsíčního dumpu lichess (.pgn.zst z database.lichess.org) spočítá "
+            "populační statistiku koncovek – remízovost a konverzi materiální "
+            "výhody podle typu koncovky, Elo pásma a tempa. Streamovaně, běží "
+            "na pozadí (u celého měsíce klidně hodiny).")
+        self.btn_eg_pop.clicked.connect(self._open_eg_population)
+        row.addWidget(self.btn_eg_pop)
         lay.addLayout(row)
         self.eg_summary = QLabel("Načti PGN databázi a vyber hráče.")
         self.eg_summary.setWordWrap(True)
@@ -3095,7 +3109,9 @@ class MainWindow(QMainWindow):
 
     def open_pgn(self) -> None:
         start_dir = self.config.get("last_dir", "")
-        path, _ = QFileDialog.getOpenFileName(self, "Otevřít PGN", start_dir, "PGN soubory (*.pgn);;Vše (*.*)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Otevřít PGN", start_dir,
+            "PGN (*.pgn *.pgn.zst *.pgn.gz *.pgn.bz2 *.pgn.xz *.zst);;Vše (*.*)")
         if not path:
             return
         self.config["last_dir"] = os.path.dirname(path)
@@ -4490,12 +4506,20 @@ class MainWindow(QMainWindow):
             return
 
         total_games = len({e.game_index for c in cats for e in c.entries})
+        pop = self._eg_pop
+        p_elo = self._player_mean_elo(player) if pop else None
+        pop_note = ""
+        if pop:
+            pm = pop.get("meta", {})
+            pop_note = (f"\nPopulační data z dumpu (Elo {pm.get('elo_lo')}–{pm.get('elo_hi')}, "
+                        f"{pm.get('with_eg', 0):,} koncovek) jsou v tooltipu u kategorie."
+                        .replace(",", " "))
         self.eg_summary.setText(
             f"{player} (obě barvy): {total_games} partií došlo do koncovky, rozřazeno do "
             f"{len(cats)} kategorií podle složení figur (partie může být ve více kategoriích); "
             f"uvnitř kategorie rozděleno podle počtu pěšců.   ({PIECE_LEGEND})\n"
             f"▲ / ▼ = kategorie se po BH korekci (FDR 5 %) významně liší od tvé "
-            f"úspěšnosti ve všech koncovkách.")
+            f"úspěšnosti ve všech koncovkách." + pop_note)
 
         res_cz = {"win": "výhra", "draw": "remíza", "loss": "prohra"}
         all_eg = [e.result for c in cats for e in c.entries]
@@ -4514,7 +4538,20 @@ class MainWindow(QMainWindow):
             fnt = cat_item.font(0)
             fnt.setBold(True)
             cat_item.setFont(0, fnt)
-            self.endgame_tree.addTopLevelItem(cat_item)
+            if pop:
+                pl = endgame_dump.population_lookup(pop, cat.label, p_elo)
+                if pl:
+                    seg = (f" (Elo ~{pl['elo_bucket']})" if pl.get("elo_bucket")
+                           else " (celá populace)")
+                    parts = []
+                    if pl["bal_draw_pct"] is not None:
+                        parts.append(f"vyrovnaný materiál → remíza {pl['bal_draw_pct']:.0f} %")
+                    if pl["e1_conv_pct"] is not None:
+                        parts.append(f"+1 pěšec → konverze {pl['e1_conv_pct']:.0f} %")
+                    if parts:
+                        cat_item.setToolTip(
+                            0, f"Populace{seg}, n={pl['n']:,}: ".replace(",", " ")
+                            + "; ".join(parts))
 
             pw_rows = list(cat.by_pawns())
             pw_sig = _sig_flags([[e.result for e in ent] for _, ent in pw_rows], w0, n0)
@@ -4548,6 +4585,261 @@ class MainWindow(QMainWindow):
         data = item.data(0, EG_GAME_ROLE)
         if data:
             self._jump_to_game(*data)
+
+    # ------------------------------------------- populace koncovek z lichess dumpu
+    def _player_mean_elo(self, player: str) -> float | None:
+        elos = []
+        for g in self.games:
+            w = g.headers.get("White", "").strip().lower() == player.lower()
+            b = g.headers.get("Black", "").strip().lower() == player.lower()
+            if not (w or b):
+                continue
+            try:
+                elos.append(int(g.headers.get("WhiteElo" if w else "BlackElo")))
+            except (TypeError, ValueError):
+                pass
+        return sum(elos) / len(elos) if elos else None
+
+    def _open_eg_population(self) -> None:
+        if self._eg_dump_worker is not None:
+            return
+        prev = self._eg_pop
+        if prev and not prev.get("meta", {}).get("done"):
+            m = prev["meta"]
+            box = QMessageBox(self)
+            box.setWindowTitle("Nedokončený rozbor")
+            box.setText(
+                f"Existuje rozpracovaný rozbor dumpu „{m.get('path', '?')}“ "
+                f"({m.get('matched', 0)} partií po filtru, {m.get('with_eg', 0)} "
+                f"s koncovkou). Stream se nedá přetočit, takže „navázat“ nejdřív "
+                f"rychle přeskočí už zpracované partie.")
+            b_res = box.addButton("Navázat", QMessageBox.AcceptRole)
+            b_new = box.addButton("Začít znovu", QMessageBox.DestructiveRole)
+            b_view = box.addButton("Jen zobrazit", QMessageBox.ActionRole)
+            box.addButton("Zrušit", QMessageBox.RejectRole)
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked == b_view:
+                self._show_eg_population(prev)
+                return
+            if clicked == b_res:
+                self._start_eg_dump(m.get("path", ""), m["elo_lo"], m["elo_hi"],
+                                    m["time_classes"], None, resume=prev)
+                return
+            if clicked != b_new:
+                return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Populace koncovek z lichess dumpu")
+        form = QFormLayout(dlg)
+        info = QLabel(
+            "Vyber měsíční dump z <a href='https://database.lichess.org/'>"
+            "database.lichess.org</a> (<code>lichess_db_standard_rated_YYYY-MM.pgn.zst</code>). "
+            "Projede se streamovaně, partie se nedrží v paměti.")
+        info.setOpenExternalLinks(True)
+        info.setWordWrap(True)
+        info.setStyleSheet("color:#555;")
+        form.addRow(info)
+
+        pick = QHBoxLayout()
+        ed_path = QLineEdit()
+        ed_path.setPlaceholderText("…/lichess_db_standard_rated_2024-12.pgn.zst")
+        btn_pick = QPushButton("Procházet…")
+        pick.addWidget(ed_path, 1)
+        pick.addWidget(btn_pick)
+        form.addRow("Soubor:", pick)
+
+        def _browse():
+            p, _ = QFileDialog.getOpenFileName(
+                self, "Dump lichess", self.config.get("last_dir", ""),
+                "PGN dump (*.pgn.zst *.pgn.gz *.pgn *.zst);;Vše (*.*)")
+            if p:
+                ed_path.setText(p)
+        btn_pick.clicked.connect(_browse)
+
+        sp_lo = QSpinBox()
+        sp_lo.setRange(400, 3500)
+        sp_lo.setValue(1800)
+        sp_hi = QSpinBox()
+        sp_hi.setRange(400, 3500)
+        sp_hi.setValue(2400)
+        erow = QHBoxLayout()
+        erow.addWidget(QLabel("od"))
+        erow.addWidget(sp_lo)
+        erow.addWidget(QLabel("do"))
+        erow.addWidget(sp_hi)
+        erow.addWidget(QLabel("(obě strany v pásmu)"))
+        erow.addStretch(1)
+        form.addRow("Elo:", erow)
+
+        trow = QHBoxLayout()
+        chks = {}
+        for tc, lbl in (("blitz", "blitz"), ("rapid", "rapid"),
+                        ("classical", "klasické"), ("bullet", "bullet")):
+            c = QCheckBox(lbl)
+            c.setChecked(tc in ("blitz", "rapid", "classical"))
+            chks[tc] = c
+            trow.addWidget(c)
+        trow.addStretch(1)
+        form.addRow("Tempo:", trow)
+
+        sp_max = QSpinBox()
+        sp_max.setRange(0, 100_000_000)
+        sp_max.setValue(0)
+        sp_max.setSpecialValueText("celý soubor")
+        sp_max.setSingleStep(100_000)
+        form.addRow("Max partií po filtru:", sp_max)
+
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        if ed_path.text() == "" and prev:
+            ed_path.setText(prev.get("meta", {}).get("path", ""))
+        if dlg.exec() != QDialog.Accepted:
+            return
+        path = ed_path.text().strip()
+        if not path or not os.path.exists(path):
+            QMessageBox.warning(self, "Populace koncovek", "Soubor neexistuje.")
+            return
+        tcs = tuple(tc for tc, c in chks.items() if c.isChecked())
+        if not tcs:
+            QMessageBox.warning(self, "Populace koncovek", "Vyber aspoň jedno tempo.")
+            return
+        lo, hi = min(sp_lo.value(), sp_hi.value()), max(sp_lo.value(), sp_hi.value())
+        self._start_eg_dump(path, lo, hi, tcs, sp_max.value() or None, resume=None)
+
+    def _start_eg_dump(self, path, lo, hi, tcs, max_games, resume) -> None:
+        prog = QProgressDialog("Otevírám dump…", "Zastavit (nechat rozpracované)",
+                               0, 0, self)
+        prog.setWindowTitle("Populace koncovek z dumpu")
+        prog.setMinimumWidth(520)
+        prog.setWindowModality(Qt.WindowModal)
+        prog.setAutoReset(False)
+        prog.setAutoClose(False)
+
+        w = endgame_dump.EndgameDumpWorker(path, lo, hi, tcs, max_games, resume, self)
+        self._eg_dump_worker = w
+        result: dict = {}
+
+        def _fmt(meta, elapsed):
+            if meta.get("phase") == "skip":
+                prog.setLabelText(
+                    f"Přeskakuji už zpracované partie… {meta['scanned']:,}/"
+                    f"{meta['target']:,}".replace(",", " "))
+                return
+            sc, ma, eg = meta.get("scanned", 0), meta.get("matched", 0), meta.get("with_eg", 0)
+            rate = sc / elapsed if elapsed > 0 else 0
+            prog.setLabelText(
+                f"Projito {sc:,} partií · {ma:,} po filtru · {eg:,} s koncovkou\n"
+                f"{rate:,.0f} partií/s · běží {elapsed / 60:.0f} min"
+                .replace(",", " "))
+
+        w.progress.connect(_fmt)
+        prog.canceled.connect(w.stop)
+        w.failed.connect(lambda msg: (result.update(err=msg), prog.reset()))
+        w.finished_ok.connect(lambda st: (result.update(st=st), prog.reset()))
+        w.finished.connect(lambda: setattr(self, "_eg_dump_worker", None))
+        w.start()
+        prog.exec()
+        if w.isRunning():
+            w.stop()
+            w.wait(5000)
+        st = result.get("st") or endgame_dump.load_population()
+        if result.get("err"):
+            QMessageBox.warning(self, "Populace koncovek", result["err"])
+        if st:
+            self._eg_pop = st
+            if hasattr(self, "endgame_tree") and self.games:
+                self._update_endgames()
+            self._show_eg_population(st)
+
+    def _show_eg_population(self, state: dict) -> None:
+        rws = endgame_dump.rows(state, min_n=50)
+        if not rws:
+            QMessageBox.information(
+                self, "Populace koncovek",
+                "Zatím málo dat – žádná kategorie nemá aspoň 50 partií.")
+            return
+        m = state.get("meta", {})
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Populace koncovek (lichess dump)")
+        dlg.resize(1000, 640)
+        lay = QVBoxLayout(dlg)
+        done = "dokončeno" if m.get("done") else "ROZPRACOVÁNO (jde navázat)"
+
+        def _num(x):
+            return f"{x:,}".replace(",", " ")
+        head = QLabel(
+            f"Dump „{m.get('path', '?')}“ · Elo {m.get('elo_lo')}–{m.get('elo_hi')} "
+            f"(obě strany) · tempo {' + '.join(m.get('time_classes', []))} · {done}.\n"
+            f"Projito {_num(m.get('scanned', 0))} partií, {_num(m.get('matched', 0))} "
+            f"po filtru, {_num(m.get('with_eg', 0))} došlo do koncovky.  "
+            f"„Vyrovn.“ = vstup do koncovky s vyrovnaným materiálem → remízovost. "
+            f"„+1/+2 pěšec“ = vstup s výhodou → jak často ji silnější strana dotáhne. "
+            f"Dvojklik na řádek = rozpad podle Ela a tempa.")
+        head.setWordWrap(True)
+        head.setStyleSheet("color:#555;")
+        lay.addWidget(head)
+
+        t = QTableWidget(len(rws), 7)
+        t.setHorizontalHeaderLabels(
+            ["Kategorie", "Partií", "Remíz %", "Vyrovn. (n)", "Vyrovn. remíz %",
+             "+1 pěšec konverze %", "+2 pěšce konverze %"])
+        t.verticalHeader().setVisible(False)
+        t.setEditTriggers(QTableWidget.NoEditTriggers)
+        t.setSelectionBehavior(QTableWidget.SelectRows)
+        t.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        for c in range(1, 7):
+            t.setColumnWidth(c, 116)
+
+        def _cell(v, n=None):
+            if v is None:
+                return "–"
+            return f"{v:.0f} %" + (f"  ({n})" if n else "")
+        for i, r in enumerate(rws):
+            cells = [
+                r["label"], f"{r['n']:,}".replace(",", " "),
+                _cell(r["draw_pct"]),
+                f"{r['bal_n']:,}".replace(",", " "),
+                _cell(r["bal_draw_pct"]),
+                _cell(r["e1_conv_pct"], r["e1_n"]),
+                _cell(r["e2_conv_pct"], r["e2_n"]),
+            ]
+            for c, txt in enumerate(cells):
+                it = QTableWidgetItem(txt)
+                if c:
+                    it.setTextAlignment(Qt.AlignCenter)
+                it.setData(Qt.UserRole, r["label"])
+                t.setItem(i, c, it)
+        t.itemDoubleClicked.connect(
+            lambda it: self._show_eg_pop_detail(state, it.data(Qt.UserRole)))
+        lay.addWidget(t, stretch=1)
+        btn = QPushButton("Zavřít")
+        btn.clicked.connect(dlg.accept)
+        lay.addWidget(btn, alignment=Qt.AlignRight)
+        dlg.exec()
+
+    def _show_eg_pop_detail(self, state: dict, label: str) -> None:
+        def _bit(r):
+            s = f"n={r['n']:,}".replace(",", " ")
+            if r["bal_draw_pct"] is not None:
+                s += f", vyrovnaný remíz {r['bal_draw_pct']:.0f} %"
+            if r["e1_conv_pct"] is not None:
+                s += f", +1 pěšec konverze {r['e1_conv_pct']:.0f} %"
+            return s
+
+        lines = [f"<b>{label}</b>", "", "<u>Podle Ela</u> (průměr obou hráčů):"]
+        lines += [f"&nbsp;&nbsp;{r['elo']}–{r['elo'] + 99}: {_bit(r)}"
+                  for r in endgame_dump.elo_trend(state, label)]
+        lines += ["", "<u>Podle tempa</u>:"]
+        lines += [f"&nbsp;&nbsp;{r['tc']}: {_bit(r)}"
+                  for r in endgame_dump.tc_split(state, label)]
+        box = QMessageBox(self)
+        box.setWindowTitle("Detail koncovky")
+        box.setTextFormat(Qt.RichText)
+        box.setText("<br>".join(lines))
+        box.exec()
 
     @staticmethod
     def _resort(tree: QTreeWidget) -> None:
