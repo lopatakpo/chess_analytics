@@ -16,20 +16,20 @@ Desktopová aplikace (PySide6 / Qt) pro:
   s rozpadem podle barvy, fáze, tempa a roku; výsledky se cachují,
 - **rozbor hráče** nad databází partií: strom zahájení z aktuální pozice, heatmapa tahů,
   rozbor zahájení podle ECO (+ **diverzita repertoáru**, **hloubka teorie/book exit**
-  z vlastní historie hráče a **porovnání winrate s populací** přes lichess Opening
+  z vlastní historie hráče a **porovnání úspěšnosti s populací** přes lichess Opening
   Explorer) a rozbor koncovek podle kategorií (vše s úspěšností),
-- **statistické vzorce** (karta *Vzorce*): winrate podle rošády, výměny dam, materiálu,
+- **statistické vzorce** (karta *Vzorce*): úspěšnost podle rošády, výměny dam, materiálu,
   pěšcové struktury, konce partie, délky partie a **formy po předchozí partii**;
   plus **Elo-adjusted výkonnost** a „štěstí" (z-skóre),
-- **statistická rigoróznost všude, kde se ukazuje winrate**: Wilsonův interval
+- **statistická rigoróznost všude, kde se ukazuje úspěšnost**: Wilsonův interval
   spolehlivosti a empirical-Bayes shrinkage v tooltipu (ať malý vzorek nevypadá
   stejně důvěryhodně jako velký), Markovova řetězová predikce ve stromu zahájení,
   Kaplan–Meierův medián (cenzurovaná data) pro vstup do koncovky,
 - **grafy** (karta *Grafy*): eval graf partie, vývoj ACPL/přesnosti/IPR (i konverze/
-  záchrany/Tactical Awareness) v čase, winrate podle zahájení, histogram divokosti
+  záchrany/Tactical Awareness) v čase, úspěšnost podle zahájení, histogram divokosti
   partií, kumulativní „štěstí" v čase, dotahování (konverze/záchrana sloupcově),
   radar profilu hráče, kritičnost×přesnost tahu, koláč tahů podle chess.com
-  kategorie, heatmapa winrate podle dne v týdnu a hodiny, Elo hráč×soupeř scatter
+  kategorie, heatmapa úspěšnosti podle dne v týdnu a hodiny, Elo hráč×soupeř scatter
   (barva podle výsledku); + histogramy se zvonovou (normální) křivkou a boxem
   Průměr/Sm. odchylka/N (styl Minitab) pro délku partie, první braní, vstup do
   koncovky, materiálové manko, Elo rozdíl soupeře, ztrátu bodů z vyhraných
@@ -177,9 +177,9 @@ karty okna:
 | **Heatmapa** | heatmapa polí vybraného hráče |
 | **Zahájení** | partie rozřazené podle zahájení (ECO) |
 | **Koncovky** | partie rozřazené podle typu koncovky |
-| **Vzorce** | winrate podle rošády, výměny dam, materiálu, struktury, konce a délky partie |
+| **Vzorce** | úspěšnost podle rošády, výměny dam, materiálu, struktury, konce a délky partie |
 | **Přesnost** | přesnost / ACPL / EP / hrubky / shoda s enginem přes databázi (na pozadí, s cache) |
-| **Grafy** | eval graf partie, vývoj v čase (i konverze/záchrana/Tactical Awareness), divokost partií, winrate podle zahájení, kumulativní štěstí, dotahování, radar profilu hráče, kritičnost×přesnost, koláč tahů podle chess.com kategorie, heatmapa winrate podle dne/hodiny, Elo hráč×soupeř scatter, + histogramy se zvonovou křivkou (délka, výsledek, první braní, koncovka, materiál, Elo, ztráta bodů, Tactical Awareness) přes celou DB |
+| **Grafy** | eval graf partie, vývoj v čase (i konverze/záchrana/Tactical Awareness), divokost partií, úspěšnost podle zahájení, kumulativní štěstí, dotahování, radar profilu hráče, kritičnost×přesnost, koláč tahů podle chess.com kategorie, heatmapa úspěšnosti podle dne/hodiny, Elo hráč×soupeř scatter, + histogramy se zvonovou křivkou (délka, výsledek, první braní, koncovka, materiál, Elo, ztráta bodů, Tactical Awareness) přes celou DB |
 | **Taktika** | taktické úlohy z hráčových partií (přehlédnuté i nalezené), motivy, obtížnost, řešení na šachovnici s tolerancí, hvězdička, opakování SM-2 |
 | **Report** | uložené snímky statistik hráčů (Přesnost + Vzorce) a jejich vzájemné porovnání – tabulka metrik vedle sebe, srovnávací grafy (radar / sloupce / kategorie tahů), export do PDF |
 
@@ -295,7 +295,7 @@ partie vybraného hráče v databázi pokračovaly (včetně transpozic). U kaž
 tahu je:
 
 - **počet partií**, které tudy prošly,
-- **winrate** = výhry ÷ rozhodnuté partie z pohledu hráče (remízy se do čitatele
+- **úspěšnost** = výhry ÷ rozhodnuté partie z pohledu hráče (remízy se do čitatele
   nepočítají), obarvené od červené (0 %) přes žlutou po zelenou (100 %),
 - **Výsledek V/R/P** jako skládaný pruh s podílem výher (zelená), remíz (šedá) a
   proher (červená); přesná čísla ukáže tooltip,
@@ -323,7 +323,7 @@ Kombinací voleb jde srovnat třeba „kam stavím jezdce ve výhrách vs prohr�
 ### Vzorce (karta *Vzorce*)
 
 Partie vybraného hráče (vlastní přepínač **jako bílý / jako černý / obě barvy**)
-rozdělené podle řady kritérií; u každého koše je počet partií, **winrate**
+rozdělené podle řady kritérií; u každého koše je počet partií, **úspěšnost**
 (výhry ÷ rozhodnuté, remízy se do čitatele nepočítají) a pruh **V / R / P**.
 Rozbor se spustí až tlačítkem, platí filtr databáze. Skupiny:
 
@@ -346,7 +346,7 @@ Rozbor se spustí až tlačítkem, platí filtr databáze. Skupiny:
   na křídle, kam se soupeř uklidil, do 25. tahu).
 - **Délka a průběh partie** – délka partie v koších po tazích; podíl rozhodnutých
   vs. remízovaných partií.
-- **Forma a kontext** – winrate podle výsledku **bezprostředně předchozí partie**
+- **Forma a kontext** – úspěšnost podle výsledku **bezprostředně předchozí partie**
   ve stejné „seanci" (mezera < 60 minut, podle časového razítka v hlavičce) –
   po výhře / po remíze / po prohře. Ukazuje tilt (horší forma po prohře) nebo
   naopak.
@@ -356,7 +356,7 @@ Pod stromem je navíc volně-textová sekce **„Elo-adjusted výkonnost a ště
 
 - **Elo-adjusted výkonnost** – skutečné skóre minus to, co by čekal rozdíl v Elu
   soupeřů (`E = 1/(1+10^((Elo_soupeře−Elo_hráče)/400))`) – silnější signál než
-  syrový winrate, protože odfiltruje „vyhrávám hlavně proti slabším",
+  syrová úspěšnost, protože odfiltruje „vyhrávám hlavně proti slabším",
 - **„štěstí"** – z-skóre skutečného skóre vs. Elo-očekávaného; blízko 0 =
   výkon odpovídá síle soupeřů, vysoké |z| = neobvykle šťastná/nešťastná série
   (nebo skutečná změna formy – u velkého vzorku partií vyjde i malý efekt
@@ -519,10 +519,10 @@ vzniká pořadím `1.e4 c5 2.Jf3 d6`. Book depth (viz níže) se pak počítá j
 nejzazší půltah, kdy je pozice pořád ještě v knize – po libovolném pořadí tahů.
 
 Strom má tři úrovně: **ECO kód → varianta → jednotlivé partie**; po spuštění je
-**sbalený**. U kódu i varianty je počet partií, winrate a pruh V/R/P (u obou
+**sbalený**. U kódu i varianty je počet partií, úspěšnost a pruh V/R/P (u obou
 s **Wilsonovým intervalem spolehlivosti** a **staženým odhadem** v tooltipu –
 viz níže). **Kliknutím na hlavičku sloupce** se strom seřadí (abecedně / podle
-počtu partií / podle winrate); řazení se drží i po přepočítání. **Dvojklik na
+počtu partií / podle úspěšnosti); řazení se drží i po přepočítání. **Dvojklik na
 partii** ji otevře na kartě *Partie a rozbor* od konce teoretické linie zahájení.
 
 Nad stromem je navíc:
@@ -540,12 +540,12 @@ Nad stromem je navíc:
 #### Porovnání s populací (tlačítko *🌐 Porovnat s populací (lichess)*)
 
 Pro nejhranější varianty (vyžaduje vybranou barvu – ne „obě") stáhne z veřejného
-**lichess Opening Exploreru** winrate populace ze **srovnatelné pozice**, v Elo
+**lichess Opening Exploreru** úspěšnost populace ze **srovnatelné pozice**, v Elo
 pásmu kolem tvého průměrného Ela a v tempech, která reálně hraješ. Otevře tabulku
-seřazenou podle **Δ = tvůj winrate − winrate populace** – hned vidíš, které linky
+seřazenou podle **Δ = tvá úspěšnost − úspěšnost populace** – hned vidíš, které linky
 jsou tvoje zbraň a které hraješ hůř než průměr.
 
-- srovnání je **like-for-like**: tvůj winrate se počítá jen z partií, které prošly
+- srovnání je **like-for-like**: tvá úspěšnost se počítá jen z partií, které prošly
   tou samou reprezentativní (modální) pozicí varianty; kolik jich to je, ukazuje
   sloupec „(N/M v této pozici)",
 - **▲ / ▼** = po Benjamini–Hochbergově korekci (FDR 5 %) a s věcným rozdílem
@@ -556,14 +556,14 @@ jsou tvoje zbraň a které hraješ hůř než průměr.
   delším čekáním). Ověřování certifikátu použije `certifi` (nese si ho `requests`),
   když je k dispozici, jinak systémové CA.
 
-### Wilsonův interval a shrinkage (tooltip u winrate)
+### Wilsonův interval a shrinkage (tooltip u úspěšnosti)
 
-Kdekoli appka ukazuje **winrate** (Vzorce, Zahájení, Koncovky, strom zahájení),
+Kdekoli appka ukazuje **úspěšnost** (Vzorce, Zahájení, Koncovky, strom zahájení),
 tooltip nad procentem nese:
 
 - **Wilsonův 95% interval spolehlivosti** – u 5 partií je široký (nedůvěřuj
   číslu), u 500 úzký (spolehlivé),
-- **stažený (empirical-Bayes) odhad** – winrate koše stažený k celkovému
+- **stažený (empirical-Bayes) odhad** – úspěšnost koše stažená k celkovému
   průměru hráče silou, kterou appka odhadne z rozptylu mezi koši (DerSimonian–
   Laird styl, váženo počtem partií v koši) – málo věrohodný koš (100 % ze
   3 partií) se stáhne blízko průměru, opravdu odlišný koš (spolehlivě jiný na
@@ -571,7 +571,7 @@ tooltip nad procentem nese:
   vlastních dat dostanou i predikci z podstromu (empirický Markovův řetězec –
   vážený průměr predikcí dětí).
 
-### Test rozdílu ve winrate tabulkách (▲/▼)
+### Test rozdílu v tabulkách úspěšnosti (▲/▼)
 
 Na kartách **Vzorce**, **Zahájení** a **Koncovky** se každý koš (rošáda ano/ne,
 konkrétní zahájení, typ koncovky, počet pěšců…) navíc **testuje proti zbytku
@@ -579,7 +579,7 @@ souboru** – dvouvýběrový z-test podílů (výhra vs. neúspěch) mezi tím 
 a celkem hráče bez toho koše. Aby při desítkách košů nevznikaly falešné nálezy,
 p-hodnoty projdou **Benjamini–Hochbergovou korekcí** (kontrola FDR na 5 %)
 a označí se jen koš, který navíc má i **věcný rozdíl aspoň 2,5 p.b.** od
-celkového winrate. Označený koš dostane v tabulce ▲ (spolehlivě lepší) nebo ▼
+celkové úspěšnosti. Označený koš dostane v tabulce ▲ (spolehlivě lepší) nebo ▼
 (spolehlivě horší), tučně, a p-hodnota je v tooltipu. Kód: `stats_util.winrate_outliers`.
 
 ### Koncovky (karta *Koncovky*)
@@ -606,12 +606,12 @@ je v zápisu první, takže stejné složení figur dá vždy jen jednu kategori
 - *Dáma a jezdec: D vs J*, *Těžké figury (dáma a věž): D+V vs V*, …
 
 Strom je po spuštění **sbalený** a **kliknutím na hlavičku sloupce** se dá seřadit
-(abecedně / podle počtu partií / podle winrate). Strom má tři úrovně: **kategorie →
+(abecedně / podle počtu partií / podle úspěšnosti). Strom má tři úrovně: **kategorie →
 počet pěšců na šachovnici → jednotlivé partie**. Pěšcovky
 jsou pod jednou kategorií *Pěšcová koncovka* s podřádky *1 pěšec / 2 pěšci / …*;
 stejné dělení má i každá další kategorie. Každá partie je v kategorii započítaná
 právě jednou, podle počtu pěšců při vstupu (součet podřádků = počet partií
-kategorie). Na každé úrovni je počet partií, winrate a pruh V/R/P. **Dvojklik na partii** přepne na kartu
+kategorie). Na každé úrovni je počet partií, úspěšnost a pruh V/R/P. **Dvojklik na partii** přepne na kartu
 *Partie a rozbor* a nastaví šachovnici na tah, kterým se partie stala danou
 koncovkou (u pěšcovek na chvíli, kdy měla daný počet pěšců).
 
@@ -635,8 +635,8 @@ graf obnoví.
   když rozbor nemá partie z aspoň 2 různých měsíců.
 - **Divokost partií** – histogram volatility (viz karta *Přesnost* → Charakter
   partií) přes partie z posledního rozboru na kartě *Přesnost*.
-- **Winrate podle zahájení** – vodorovný sloupcový graf, top 15 zahájení podle
-  počtu partií, seřazeno podle winrate. Přesný Wilsonův interval pro každé
+- **Úspěšnost podle zahájení** – vodorovný sloupcový graf, top 15 zahájení podle
+  počtu partií, seřazeno podle úspěšnosti. Přesný Wilsonův interval pro každé
   zahájení je v tooltipu na kartě *Zahájení*.
 
 - **Kumulativní „štěstí"** – běžící součet (skutečné − Elo-očekávané skóre)
@@ -725,12 +725,12 @@ prohrává spíš v krátkých, nebo dlouhých partiích.
 
 **Další grafy přes celou databázi:**
 
-- **Heatmapa winrate podle dne a hodiny** – mřížka 7 dny × 12 dvouhodinových
-  bloků. Kvůli čitelnosti: winrate se do buňky s aspoň 3 partiemi **vypisuje
+- **Heatmapa úspěšnosti podle dne a hodiny** – mřížka 7 dny × 12 dvouhodinových
+  bloků. Kvůli čitelnosti: úspěšnost se do buňky s aspoň 3 partiemi **vypisuje
   číslem** (barva je jen doplněk), malé číslo pod ním = počet partií, „·N" =
-  míň než 3 partie. Barevná škála je **diverging kolem hráčova celkového
-  winrate** (ne kolem 50 %) a plné barvy dosáhne už při ±15 p.b., takže i běžné
-  hodnoty mají vidět barvu. Vpravo a dole jsou **okrajové součty** (winrate za
+  míň než 3 partie. Barevná škála je **diverging kolem hráčovy celkové
+  úspěšnosti** (ne kolem 50 %) a plné barvy dosáhne už při ±15 p.b., takže i běžné
+  hodnoty mají vidět barvu. Vpravo a dole jsou **okrajové součty** (úspěšnost za
   celý den / za blok hodin) – ty jsou nejčitelnější. Vlastní `QPainter` widget
   (`time_heatmap_widget.py`), data z `patterns.game_log()`. Čas je z `UTCTime`
   v PGN hlavičce převedený na **místní čas ČR** (CET/CEST, včetně letního času –
@@ -809,7 +809,7 @@ podklady pro všechny grafy (rozdělení přes celou DB, chronologický deník p
 zahájení, Elo dvojice). U velké databáze to trvá i minutu, appka mezitím běží
 dál. Snímek obsahuje: přesnost/ACPL/EP/hrubky/T1/IPR/index, charakter partií
 (i per-partii), dotahování, kategorie tahů chess.com, brilantní tahy,
-kritičnost×přesnost; z *Vzorců* winrate po koších + Elo-adjusted převahu a
+kritičnost×přesnost; z *Vzorců* úspěšnost po koších + Elo-adjusted převahu a
 „štěstí"; a data pro histogramy (délka, první braní, koncovka, materiál, Elo).
 Ukládá se do **`player_reports.json`** vedle aplikace (i s aktivním filtrem
 databáze a datem).
@@ -825,7 +825,7 @@ sérií na hráče – profil (radar), vývoj v čase, kumulativní štěstí, k
 záchrana, kritičnost×přesnost, kategorie tahů chess.com, Elo hráč×soupeř, a
 překryté frekvenční křivky pro divokost / Tactical Awareness / délku partie /
 první braní / vstup do koncovky / materiálové manko / rozdíl Ela; heatmapa
-dne×hodiny a winrate podle zahájení se kreslí za každého hráče zvlášť.
+dne×hodiny a úspěšnost podle zahájení se kreslí za každého hráče zvlášť.
 (Když mají porovnávané reporty různou granularitu „vývoje v čase" – jeden po
 měsících, druhý po letech – graf je sjednotí na roky, ať jsou body zarovnané.)
 
@@ -870,10 +870,10 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `player_analysis.py` | výpočet heatmapy a stromu zahájení z pozice |
 | `heatmap_widget.py` | vykreslení heatmapy (QPainter) |
 | `histogram_widget.py` | histogram se zvonovou (normální) křivkou a stat-boxem – styl Minitab (QPainter) |
-| `time_heatmap_widget.py` | heatmapa winrate podle dne v týdnu a hodiny (QPainter) |
+| `time_heatmap_widget.py` | heatmapa úspěšnosti podle dne v týdnu a hodiny (QPainter) |
 | `patterns.py` | statistické vzorce partií (rošáda, dámy, materiál, struktura, …) + lehké průchody pro kartu Grafy |
 | `openings.py` | zařazení partií podle zahájení (ECO, **s transpozicemi** – podle pozic, ne pořadí tahů), diverzita repertoáru, hloubka teorie/book exit |
-| `opening_explorer.py` | porovnání winrate zahájení hráče s populací přes lichess Opening Explorer (síť + gzip cache) |
+| `opening_explorer.py` | porovnání úspěšnosti zahájení hráče s populací přes lichess Opening Explorer (síť + gzip cache) |
 | `game_download.py` | stažení všech veřejných partií hráče z lichess.org a chess.com (síť, na pozadí) |
 | `net_util.py` | sdílené HTTP nástroje (User-Agent, certifi, fallback bez ověření certifikátu při AV/firewall MITM) |
 | `eco.tsv` | databáze zahájení ECO (lichess `chess-openings`, ~3800 variant) |

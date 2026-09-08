@@ -31,8 +31,8 @@ def two_prop_p(k1: int, n1: int, k2: int, n2: int) -> float | None:
 
 def one_prop_p(k: int, n: int, p0: float) -> float | None:
     """Oboustranná p-hodnota jednovýběrového z-testu: liší se podíl k/n od *známé*
-    referenční hodnoty ``p0`` (např. winrate populace z Opening Exploreru, kde je
-    vzorek tak velký, že se bere jako pevný)? ``None`` když n ≤ 0."""
+    referenční hodnoty ``p0`` (např. úspěšnost populace z Opening Exploreru, kde
+    je vzorek tak velký, že se bere jako pevný)? ``None`` když n ≤ 0."""
     if n <= 0 or not (0.0 < p0 < 1.0):
         return None
     se = math.sqrt(p0 * (1.0 - p0) / n)
@@ -66,7 +66,7 @@ def winrate_outliers(buckets: list, w0: int, n0: int, alpha: float = 0.05,
     """``buckets`` = [(výhry, rozhodnuté), …]. Každý koš se testuje proti
     **zbytku** souboru (celek bez toho koše), pak Benjamini–Hochberg. Aby se
     u obřích vzorků neoznačovaly triviální rozdíly, koš se označí, jen když je
-    i **věcný rozdíl** aspoň ``min_effect`` (v podílu) od celkového winrate.
+    i **věcný rozdíl** aspoň ``min_effect`` (v podílu) od celkové úspěšnosti.
     Vrátí (flags: list[bool], pvals: list[float|None])."""
     p0 = (w0 / n0) if n0 else 0.5
     pvals = []

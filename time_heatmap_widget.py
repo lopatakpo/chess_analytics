@@ -1,10 +1,10 @@
-"""Heatmapa winrate podle dne v týdnu a (2h) bloku hodin – vlastní QPainter widget.
+"""Heatmapa úspěšnosti podle dne v týdnu a (2h) bloku hodin – vlastní QPainter widget.
 
-Čitelnost: winrate se do každé buňky s dost partiemi vypíše jako **číslo**
+Čitelnost: úspěšnost se do každé buňky s dost partiemi vypíše jako **číslo**
 (barva je jen doplněk), sloupce jsou 2h bloky (12 místo 24 – větší buňky, míň
-šumu), barevná škála je **diverging kolem hráčova celkového winrate** (ne kolem
+šumu), barevná škála je **diverging kolem hráčovy celkové úspěšnosti** (ne kolem
 50 %) a plné barvy dosáhne už při ±15 p.b., takže i běžné hodnoty (45–55 %) mají
-vidět barvu. Vpravo/dole jsou okrajové součty (winrate za celý den / za blok) –
+vidět barvu. Vpravo/dole jsou okrajové součty (úspěšnost za celý den / za blok) –
 ty jsou nejčitelnější a rovnou odpoví „kdy hraju nejlíp".
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ _NEUTRAL = (242, 242, 238)
 _WORSE = (198, 72, 66)     # červená – pod hráčovým průměrem
 _BETTER = (52, 132, 74)    # zelená – nad průměrem
 _SPAN = 0.15               # ±15 p.b. od průměru = plná barva
-_MIN_LABEL_N = 3           # od kolika partií v buňce vypsat winrate číslem
+_MIN_LABEL_N = 3           # od kolika partií v buňce vypsat úspěšnost číslem
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -49,9 +49,9 @@ class TimeHeatmap(QWidget):
 
     def set_data(self, winrate: list[list[float | None]], counts: list[list[int]],
                 overall_wr: float | None = None) -> None:
-        """``winrate``/``counts`` jsou 7×24 (den × hodina). Widget si sám složí
-        24 hodin do 12 dvouhodinových bloků. ``overall_wr`` = kotva barevné škály
-        (hráčův celkový winrate); None → dopočítá se z mřížky."""
+        """``winrate``/``counts`` jsou 7×24 (den × hodina; ``winrate`` = podíl výher).
+        Widget si sám složí 24 hodin do 12 dvouhodinových bloků. ``overall_wr`` =
+        kotva barevné škály (hráčova celková úspěšnost); None → dopočítá se z mřížky."""
         self._wr = winrate
         self._n = counts
         tot_w = sum(winrate[d][h] * counts[d][h] for d in range(7) for h in range(24)
@@ -89,7 +89,7 @@ class TimeHeatmap(QWidget):
         p.setFont(f)
         p.setPen(QColor("#222"))
         p.drawText(QRectF(0, 4, w, 20), Qt.AlignCenter,
-                  "Winrate podle dne v týdnu a hodiny (místní čas)")
+                  "Úspěšnost podle dne v týdnu a hodiny (místní čas)")
 
         wr, n = self._binned()
         n_cols, n_rows = 12, 7
@@ -198,5 +198,5 @@ class TimeHeatmap(QWidget):
         p.drawText(QRectF(lx + lw - 42, ly + 9, 60, 11), Qt.AlignRight,
                   f"+{_SPAN * 100:.0f} p.b.")
         p.drawText(QRectF(lx + lw + 24, ly - 1, 340, 12), Qt.AlignLeft,
-                  f"velké číslo = winrate, malé = počet partií; „·N“ = méně než "
+                  f"velké číslo = úspěšnost, malé = počet partií; „·N“ = méně než "
                   f"{_MIN_LABEL_N} partií")

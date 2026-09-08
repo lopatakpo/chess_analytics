@@ -305,11 +305,11 @@ def _winrate(results) -> float | None:
 def _stat_item(label: str, results: list, name_key=None,
                p0: float | None = None, shrink_m: float | None = None,
                sig: tuple | None = None) -> SortableItem:
-    """Řádek: název | počet partií | winrate % | pruh V/R/P; s klíči pro řazení.
+    """Řádek: název | počet partií | úspěšnost % | pruh V/R/P; s klíči pro řazení.
 
-    ``p0``/``shrink_m`` (viz :func:`_report_prior`) → tooltip u winrate ukáže
+    ``p0``/``shrink_m`` (viz :func:`_report_prior`) → tooltip u úspěšnosti ukáže
     Wilsonův interval a stažený (empirical-Bayes) odhad. ``sig`` = ``(p, True)``
-    z :func:`stats_util.winrate_outliers` → winrate se zvýrazní (▲/▼, tučně),
+    z :func:`stats_util.winrate_outliers` → úspěšnost se zvýrazní (▲/▼, tučně),
     pokud se koš po Benjamini–Hochberg korekci významně liší od tvého celku.
     """
     w = results.count("win")
@@ -347,7 +347,7 @@ def _stat_item(label: str, results: list, name_key=None,
             tip += (f"\nStažený odhad (k celkovému průměru {p0 * 100:.0f} %, "
                     f"síla {shrink_m:.0f} partií): {sr * 100:.0f} %")
         if pval is not None:
-            tip += (f"\np vs. tvůj celkový winrate: {pval:.3f}"
+            tip += (f"\np vs. tvá celková úspěšnost: {pval:.3f}"
                     + ("  → po BH korekci významné (FDR 5 %)" if is_sig
                        else "  (po korekci nevýznamné)"))
         if tip:
@@ -356,7 +356,7 @@ def _stat_item(label: str, results: list, name_key=None,
 
 
 def _report_prior(all_results: list, bucket_results: list[list]) -> tuple[float, float]:
-    """Celkový winrate (p0) a odhadnutá síla shrinkage (m) pro jeden rozbor –
+    """Celková úspěšnost (p0) a odhadnutá síla shrinkage (m) pro jeden rozbor –
     spočti jednou za report a předej všem řádkům přes ``_stat_item``."""
     w = all_results.count("win")
     dec = w + all_results.count("draw") + all_results.count("loss")
@@ -377,7 +377,7 @@ def _overall_wr(all_results: list) -> tuple[int, int]:
 
 
 def _sig_flags(bucket_results: list, w0: int, n0: int) -> list:
-    """Pro každou sadu výsledků vrátí (p, is_sig) proti celkovému winrate (w0/n0),
+    """Pro každou sadu výsledků vrátí (p, is_sig) proti celkové úspěšnosti (w0/n0),
     po Benjamini–Hochberg korekci napříč koši."""
     buckets = [(res.count("win"),
                 res.count("win") + res.count("draw") + res.count("loss"))
@@ -800,7 +800,7 @@ class MainWindow(QMainWindow):
         self.opening_tree = QTreeWidget()
         self.opening_tree.setColumnCount(5)
         self.opening_tree.setHeaderLabels(
-            ["Tah", "Partií", "Winrate", "Výsledek  V / R / P", "podíl"])
+            ["Tah", "Partií", "Úspěšnost", "Výsledek  V / R / P", "podíl"])
         hdr = self.opening_tree.header()
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -1066,7 +1066,7 @@ class MainWindow(QMainWindow):
         row.addStretch(1)
         self.btn_op_explorer = QPushButton("🌐 Porovnat s populací (lichess)")
         self.btn_op_explorer.setToolTip(
-            "Stáhne z lichess Opening Exploreru winrate populace ve srovnatelném "
+            "Stáhne z lichess Opening Exploreru úspěšnost populace ve srovnatelném "
             "Elo pásmu a tempu a porovná s tvým – kde jsi lepší / horší než průměr.\n"
             "Jediná funkce, která chodí na síť. Výsledky se cachují.")
         self.btn_op_explorer.clicked.connect(self._compare_openings_population)
@@ -1079,7 +1079,7 @@ class MainWindow(QMainWindow):
         self.opening_stats_tree = QTreeWidget()
         self.opening_stats_tree.setColumnCount(4)
         self.opening_stats_tree.setHeaderLabels(
-            ["ECO kód / varianta / partie", "Partií", "Winrate", "Výsledek  V / R / P"])
+            ["ECO kód / varianta / partie", "Partií", "Úspěšnost", "Výsledek  V / R / P"])
         oh = self.opening_stats_tree.header()
         oh.setStretchLastSection(False)
         oh.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -1118,7 +1118,7 @@ class MainWindow(QMainWindow):
         self.endgame_tree = QTreeWidget()
         self.endgame_tree.setColumnCount(4)
         self.endgame_tree.setHeaderLabels(
-            ["Kategorie / počet pěšců / partie", "Partií", "Winrate", "Výsledek  V / R / P"])
+            ["Kategorie / počet pěšců / partie", "Partií", "Úspěšnost", "Výsledek  V / R / P"])
         eh = self.endgame_tree.header()
         eh.setStretchLastSection(False)
         eh.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -1170,7 +1170,7 @@ class MainWindow(QMainWindow):
         self.patterns_tree = QTreeWidget()
         self.patterns_tree.setColumnCount(4)
         self.patterns_tree.setHeaderLabels(
-            ["Rozbor", "Partií", "Winrate", "Výsledek  V / R / P"])
+            ["Rozbor", "Partií", "Úspěšnost", "Výsledek  V / R / P"])
         ph = self.patterns_tree.header()
         ph.setStretchLastSection(False)
         ph.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -1180,7 +1180,7 @@ class MainWindow(QMainWindow):
         self.patterns_tree.setItemDelegateForColumn(3, WDLBarDelegate(self.patterns_tree))
         lay.addWidget(self.patterns_tree, stretch=1)
         hint = QLabel("Partie vybraného hráče rozdělené podle různých kritérií; u každého "
-                      "koše je počet partií, winrate a pruh V / R / P. Winrate = výhry ÷ "
+                      "koše je počet partií, úspěšnost a pruh V / R / P. Úspěšnost = výhry ÷ "
                       "rozhodnuté partie (remízy se do čitatele nepočítají). Pěšcová struktura "
                       "se hodnotí ze snímku pozice kolem 20. tahu. Respektuje se filtr databáze. "
                       "Rozbor se spustí až tlačítkem.")
@@ -1285,7 +1285,7 @@ class MainWindow(QMainWindow):
     _CHART_KINDS = [
         ("Eval graf vybrané partie", "eval"),
         ("Vývoj v čase (karta Přesnost)", "trend"),
-        ("Winrate podle zahájení", "openings"),
+        ("Úspěšnost podle zahájení", "openings"),
         ("Divokost partií (histogram)", "volatility"),
         ("Kumulativní „štěstí“", "luck"),
         ("Délka partie (histogram)", "length"),
@@ -1303,7 +1303,7 @@ class MainWindow(QMainWindow):
         ("Hrubky podle figury / typu tahu", "piece_blund"),
         ("Chybová heatmapa – odkud táhnu", "err_from"),
         ("Chybová heatmapa – kam táhnu", "err_to"),
-        ("Heatmapa winrate podle dne a hodiny", "time_heatmap"),
+        ("Heatmapa úspěšnosti podle dne a hodiny", "time_heatmap"),
         ("Tahy podle kategorie chess.com – 1 partie (koláč)", "move_pie"),
         ("Tahy podle kategorie chess.com – celý rozbor (koláč)", "move_pie_db"),
         ("Elo hráče × Elo soupeře (scatter)", "opponent_scatter"),
@@ -2337,7 +2337,7 @@ class MainWindow(QMainWindow):
         rows = rows[:15]
         rows.sort(key=lambda r: r[2])
         cats = [f"{lbl[:26]}  (n={n})" for lbl, n, _ in rows]
-        barset = QBarSet("Winrate %")
+        barset = QBarSet("Úspěšnost %")
         for _, _, wr in rows:
             barset.append(round(wr * 100, 1))
         series = QHorizontalBarSeries()
@@ -2347,12 +2347,12 @@ class MainWindow(QMainWindow):
         chart = QChart()
         chart.addSeries(series)
         chart.legend().hide()
-        chart.setTitle(f"Winrate podle zahájení – top {len(rows)} podle počtu partií")
+        chart.setTitle(f"Úspěšnost podle zahájení – top {len(rows)} podle počtu partií")
         ax = QBarCategoryAxis()
         ax.append(cats)
         ay = QValueAxis()
         ay.setRange(0, 100)
-        ay.setTitleText("winrate %")
+        ay.setTitleText("úspěšnost %")
         chart.addAxis(ax, Qt.AlignLeft)
         chart.addAxis(ay, Qt.AlignBottom)
         series.attachAxis(ax)
@@ -2834,9 +2834,9 @@ class MainWindow(QMainWindow):
         self.chart_stack.setCurrentWidget(self.chart_heat)
         extra = f"; {n_no_time} bez času (nezahrnuty)" if n_no_time else ""
         self.chart_note.setText(
-            f"{total_known} partií hráče {player} se známým časem{extra}. Winrate = "
+            f"{total_known} partií hráče {player} se známým časem{extra}. Úspěšnost = "
             f"podíl výher (remízy se počítají do jmenovatele, ne do čitatele – stejná "
-            f"definice jako u grafu „Winrate podle zahájení“). Čas je z UTCTime v PGN "
+            f"definice jako u grafu „Úspěšnost podle zahájení“). Čas je z UTCTime v PGN "
             f"hlavičce převedený na místní čas ČR (CET/CEST, včetně letního času).")
 
     def _build_move_pie(self, counts: dict, title: str,
@@ -4366,7 +4366,7 @@ class MainWindow(QMainWindow):
                 f"Žádná partie hráče {player} ({clabel}) touto pozicí neprošla.")
             return
         wr = root.winrate
-        extra = (f"  |  celkový winrate {wr * 100:.0f} %" if wr is not None else "")
+        extra = (f"  |  celková úspěšnost {wr * 100:.0f} %" if wr is not None else "")
         self.tree_summary.setText(
             f"{player} {clabel}: {root.games} partií touto pozicí  "
             f"(V {root.win} · R {root.draw} · P {root.loss}){extra}")
@@ -4494,8 +4494,8 @@ class MainWindow(QMainWindow):
             f"{player} (obě barvy): {total_games} partií došlo do koncovky, rozřazeno do "
             f"{len(cats)} kategorií podle složení figur (partie může být ve více kategoriích); "
             f"uvnitř kategorie rozděleno podle počtu pěšců.   ({PIECE_LEGEND})\n"
-            f"▲ / ▼ = kategorie se po BH korekci (FDR 5 %) významně liší od tvého "
-            f"winrate ve všech koncovkách.")
+            f"▲ / ▼ = kategorie se po BH korekci (FDR 5 %) významně liší od tvé "
+            f"úspěšnosti ve všech koncovkách.")
 
         res_cz = {"win": "výhra", "draw": "remíza", "loss": "prohra"}
         all_eg = [e.result for c in cats for e in c.entries]
@@ -4579,8 +4579,8 @@ class MainWindow(QMainWindow):
         self.op_summary.setText(
             f"{player} {clabel}: {n_games} partií, {len(groups)} ECO kódů, {n_var} variant.\n"
             f"{_repertoire_text(div, book)}\n"
-            f"▲ / ▼ = zahájení se po BH korekci (FDR 5 %) významně liší od tvého "
-            f"celkového winrate (p v tooltipu).")
+            f"▲ / ▼ = zahájení se po BH korekci (FDR 5 %) významně liší od tvé "
+            f"celkové úspěšnosti (p v tooltipu).")
         all_res = [r for g in groups for r in g.results()]
         p0 = _report_prior(all_res, [])[0]
         w0, n0 = _overall_wr(all_res)
@@ -4639,8 +4639,8 @@ class MainWindow(QMainWindow):
         if colors == "both":
             QMessageBox.information(
                 self, "Porovnání s populací",
-                "Vyber „jako bílý“ nebo „jako černý“ – winrate populace je "
-                "pro každou stranu jiný, u „obě barvy“ by se to míchalo.")
+                "Vyber „jako bílý“ nebo „jako černý“ – úspěšnost populace je "
+                "pro každou stranu jiná, u „obě barvy“ by se to míchalo.")
             return
         if getattr(self, "_explorer_worker", None) is not None:
             return
@@ -4709,7 +4709,7 @@ class MainWindow(QMainWindow):
             f"{player} {clabel} vs populace lichess · Elo pásma {ratings} · "
             f"tempa {speeds_str}"
             f"{f' · tvé průměrné Elo ~{round(mean_elo)}' if mean_elo else ''}.\n"
-            f"Δ = tvůj winrate − winrate populace ze srovnatelné pozice "
+            f"Δ = tvá úspěšnost − úspěšnost populace ze srovnatelné pozice "
             f"(remízy v obou počítány do jmenovatele). ▲/▼ = po Benjamini–Hochbergu "
             f"(FDR 5 %) i s věcným rozdílem ≥ 5 p.b. se lišíš od populace. "
             f"Dvojklik zavře.")
@@ -4845,7 +4845,7 @@ class MainWindow(QMainWindow):
         self.pat_summary.setText(
             f"{player} {clabel}: {report.n_games} partií. "
             f"Barvu rozboru přepni vlevo; platí filtr databáze.")
-        # celkový winrate: první rozklad prvního rozboru pokrývá každou partii
+        # celková úspěšnost: první rozklad prvního rozboru pokrývá každou partii
         # přesně jednou (žádný koš „None"), takže jde vzít jako celý soubor
         first_rows = (report.groups[0].breakdowns[0].rows
                      if report.groups and report.groups[0].breakdowns else [])
@@ -4877,8 +4877,8 @@ class MainWindow(QMainWindow):
         self._add_kv_section(
             self.patterns_tree, 4, "Elo-adjusted výkonnost a štěstí",
             report.summary_lines + [
-                "▲ / ▼ u winrate = koš se po Benjamini–Hochberg korekci (FDR 5 %) "
-                "významně liší od tvého celkového winrate; p-hodnota je v tooltipu."])
+                "▲ / ▼ u úspěšnosti = koš se po Benjamini–Hochberg korekci (FDR 5 %) "
+                "významně liší od tvé celkové úspěšnosti; p-hodnota je v tooltipu."])
         self.patterns_tree.expandAll()
 
     def _flip_boards(self) -> None:

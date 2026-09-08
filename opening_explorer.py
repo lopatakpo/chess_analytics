@@ -1,8 +1,8 @@
 """Porovnání zahájení hráče s populací přes lichess Opening Explorer.
 
 Pro reprezentativní pozici každé varianty se z veřejného API
-``explorer.lichess.org/lichess`` stáhne winrate populace ve srovnatelném Elo
-pásmu a tempu; porovná se s hráčovým winrate (jednovýběrový z-test proti
+``explorer.lichess.org/lichess`` stáhne úspěšnost populace ve srovnatelném Elo
+pásmu a tempu; porovná se s hráčovou úspěšností (jednovýběrový z-test proti
 populaci jako známé referenci + Benjamini–Hochberg). Výsledky se cachují
 gzipovaně vedle aplikace, ať se API nezatěžuje opakovaně.
 
@@ -36,7 +36,7 @@ MAX_PLY = 14            # hlouběji už má explorer pro pásmo řídká data
 MIN_PLAYER_GAMES = 8    # míň partií hráče v lince nemá smysl porovnávat
 MIN_POP_GAMES = 50      # míň partií populace = nespolehlivá reference
 TOP_VARIANTS = 30       # kolik nejhranějších variant porovnat
-_MIN_EFFECT = 0.05      # min. věcný rozdíl winrate (jinak neoznačovat)
+_MIN_EFFECT = 0.05      # min. věcný rozdíl úspěšnosti (jinak neoznačovat)
 
 
 # --------------------------------------------------------------- Elo pásma / tempa
@@ -211,9 +211,9 @@ def build_tasks(groups, games, colors: str) -> list:
         if len(v.entries) < MIN_PLAYER_GAMES:
             continue
         # jeden pevný půltah pro celou variantu (modální konec teorie) – ať se
-        # pozice co nejmíň tříští; pak modální FEN v tom půltahu. Winrate hráče
+        # pozice co nejmíň tříští; pak modální FEN v tom půltahu. Úspěšnost hráče
         # se počítá jen z partií, které tou pozicí prošly – aby to bylo srovnání
-        # like-for-like s populací (ne winrate přes celou variantu vs. jedna pozice)
+        # like-for-like s populací (ne úspěšnost přes celou variantu vs. jedna pozice)
         plies = Counter(min(max(int(e.enter_ply or 0), 6), MAX_PLY) for e in v.entries)
         ply = plies.most_common(1)[0][0]
         by_fen: dict = {}

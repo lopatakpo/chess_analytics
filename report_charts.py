@@ -57,7 +57,7 @@ COMPARE_CHARTS = [
     ("material",      "Materiálové manko"),
     ("elo_hist",      "Rozdíl Elo soupeře"),
     ("length_result", "Délka partie podle výsledku"),
-    ("openings",      "Winrate podle zahájení"),
+    ("openings",      "Úspěšnost podle zahájení"),
     ("error_map",     "Chybová heatmapa (odkud táhnu)"),
     ("time_heatmap",  "Heatmapa dne × hodiny"),
 ]
@@ -513,10 +513,10 @@ def _openings(snaps):
         rows = rows[:12]
         rows.sort(key=lambda r: r[2])
         chart = QChart()
-        chart.setTitle(f"Winrate podle zahájení – {_name(s)} (top 12 podle počtu)")
+        chart.setTitle(f"Úspěšnost podle zahájení – {_name(s)} (top 12 podle počtu)")
         chart.legend().hide()
         from PySide6.QtCharts import QHorizontalBarSeries
-        bs = QBarSet("Winrate %")
+        bs = QBarSet("Úspěšnost %")
         bs.setColor(QColor(_color(i)))
         for _lbl, _n, wr in rows:
             bs.append(round(wr, 1))
@@ -527,7 +527,7 @@ def _openings(snaps):
         ax.append([f"{lbl[:24]} (n={n})" for lbl, n, _ in rows])
         ay = QValueAxis()
         ay.setRange(0, 100)
-        ay.setTitleText("winrate %")
+        ay.setTitleText("úspěšnost %")
         chart.addAxis(ax, Qt.AlignLeft)
         chart.addAxis(ay, Qt.AlignBottom)
         ser.attachAxis(ax)

@@ -4,7 +4,7 @@ Report = snímek spočítaných statistik jednoho hráče v jednom okamžiku:
 - **Přesnost** – celý výsledek dávkového rozboru z karty *Přesnost*
   (``AccuracyBatch``): přesnost/ACPL/EP/hrubky/T1/IPR/index, charakter partií,
   dotahování, kategorie tahů chess.com, brilantní tahy, kritičnost×přesnost.
-- **Vzorce** – serializovaný ``PatternReport`` z karty *Vzorce* (winrate po
+- **Vzorce** – serializovaný ``PatternReport`` z karty *Vzorce* (úspěšnost po
   koších + Elo-adjusted převaha a „štěstí").
 
 Snímky se ukládají do ``player_reports.json`` vedle aplikace. Porovnání staví
@@ -158,7 +158,7 @@ COMPARE_ROWS = [
     ("complexity",  "Komplexita pozic",          None,   "{:.2f}"),
     ("brilliants",  "Brilantních tahů hráče",    "high", "{:.0f}"),
     ("pat_games",   "Partií (rozbor vzorců)",    None,   "{:.0f}"),
-    ("pat_winrate", "Winrate % (vzorce)",        "high", "{:.1f}"),
+    ("pat_winrate", "Úspěšnost % (vzorce)",       "high", "{:.1f}"),
     ("elo_surplus", "Elo-adjusted převaha (b./partii)", "high", "{:+.2f}"),
     ("luck_z",      "„Štěstí“ (z-skóre)",        None,   "{:+.1f}"),
 ]

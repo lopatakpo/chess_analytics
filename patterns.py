@@ -1,6 +1,6 @@
 """Statistické vzorce v partiích hráče – jedním průchodem každé partie.
 
-Skupiny rozborů (každý = rozdělení partií do košů + winrate / V-R-P):
+Skupiny rozborů (každý = rozdělení partií do košů + úspěšnost / V-R-P):
 - Rošáda (strana, vzájemný vztah, načasování),
 - Výměna dam / těžké figury,
 - Materiál a výměny (první braní, tempo výměn, oběti, náskok, dvojice střelců),
@@ -548,7 +548,7 @@ def _build_groups(feats: list[Features]) -> list[PatternGroup]:
                                   else "remíza" if f.result == "draw" else None),
                 ["rozhodnuto", "remíza"],
                 "Rozhodnuto vs. remíza podle délky",
-                "Winrate v řádku „rozhodnuto“ = podíl výher mezi rozhodnutými partiemi."),
+                "Úspěšnost v řádku „rozhodnuto“ = podíl výher mezi rozhodnutými partiemi."),
         ]),
         PatternGroup("Forma a kontext", [
             _by(feats, lambda f: ({"win": "po výhře", "draw": "po remíze",
