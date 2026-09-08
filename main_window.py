@@ -45,11 +45,13 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QProgressBar,
+    QProgressDialog,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -100,7 +102,9 @@ from move_class import (
 from heatmap_widget import HeatmapWidget
 from histogram_widget import HistogramChart
 from time_heatmap_widget import TimeHeatmap
+import net_util
 import opening_explorer
+from game_download import GameDownloadWorker
 from openings import analyze_openings, game_opening, personal_book_depth, repertoire_diversity
 from patterns import (
     analyze_patterns,
@@ -572,6 +576,7 @@ class MainWindow(QMainWindow):
         self._report_compare: list = []              # aktuálně porovnávané snímky
         self._report_builder: ReportBuilder | None = None
         self._explorer_worker = None                  # porovnání zahájení s populací
+        self._dl_worker = None                        # stažení partií z lichess/chess.com
 
         # přehrávání varianty na malé šachovnici
         self._var_base: chess.Board | None = None
@@ -3014,6 +3019,10 @@ class MainWindow(QMainWindow):
         act_paste.triggered.connect(self.paste_pgn)
         m_file.addAction(act_paste)
 
+        act_download = QAction("Stáhnout partie z lichess / chess.com…", self)
+        act_download.triggered.connect(self._download_games)
+        m_file.addAction(act_download)
+
         m_file.addSeparator()
         act_quit = QAction("Konec", self)
         act_quit.setShortcut(QKeySequence.Quit)
@@ -3098,6 +3107,119 @@ class MainWindow(QMainWindow):
         if not ok or not text.strip():
             return
         self._start_loading(text=text, source="vložený text")
+
+    def _ensure_network_ok(self) -> bool:
+        """Preflight: když selže ověření HTTPS certifikátu (typicky AV/firewall
+        MITM proxy), zeptá se, jestli pokračovat bez ověření. Vrátí False =
+        uživatel to zrušil."""
+        if net_util.insecure_enabled():
+            return True
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            ok = net_util.probe()
+        finally:
+            QApplication.restoreOverrideCursor()
+        if ok:
+            return True
+        ans = QMessageBox.question(
+            self, "Ověření certifikátu",
+            "Ověření HTTPS certifikátu selhalo – nejspíš kvůli antiviru nebo "
+            "firewallu, který zachytává šifrované spojení vlastním certifikátem.\n\n"
+            "Stahují se jen veřejné PGN partie z lichess.org a chess.com "
+            "(nic citlivého). Pokračovat bez ověření certifikátu (pro tuto "
+            "relaci)?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if ans != QMessageBox.Yes:
+            return False
+        net_util.allow_insecure(True)
+        return True
+
+    # ---------------------------------------- stažení partií z lichess/chess.com
+    def _download_games(self) -> None:
+        if self._dl_worker is not None:
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Stáhnout partie")
+        form = QFormLayout(dlg)
+        info = QLabel(
+            "Stáhne všechny <b>veřejné</b> partie hráče přes veřejné API "
+            "(bez přihlášení). Vyplň aspoň jedno jméno; když vyplníš obě, "
+            "partie z obou serverů se spojí. U tisíců partií to může chvíli trvat.")
+        info.setWordWrap(True)
+        info.setStyleSheet("color:#555;")
+        form.addRow(info)
+        ed_li = QLineEdit()
+        ed_li.setPlaceholderText("uživatelské jméno na lichess.org")
+        form.addRow("lichess:", ed_li)
+        ed_cc = QLineEdit()
+        ed_cc.setPlaceholderText("uživatelské jméno na chess.com")
+        form.addRow("chess.com:", ed_cc)
+        chk_rated = QCheckBox("jen hodnocené partie (platí pro lichess)")
+        form.addRow("", chk_rated)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(dlg.accept)
+        bb.rejected.connect(dlg.reject)
+        form.addRow(bb)
+        last = self.config.get("last_dl", {})
+        ed_li.setText(last.get("lichess", ""))
+        ed_cc.setText(last.get("chesscom", ""))
+        if dlg.exec() != QDialog.Accepted:
+            return
+        li, cc = ed_li.text().strip(), ed_cc.text().strip()
+        if not li and not cc:
+            return
+        self.config["last_dl"] = {"lichess": li, "chesscom": cc}
+        save_config(self.config)
+        if not self._ensure_network_ok():
+            return
+
+        prog = QProgressDialog("Připojuji se…", "Zrušit", 0, 0, self)
+        prog.setWindowTitle("Stahuji partie")
+        prog.setMinimumWidth(440)
+        prog.setWindowModality(Qt.WindowModal)
+
+        w = GameDownloadWorker(li, cc, chk_rated.isChecked(), self)
+        self._dl_worker = w
+        names = " + ".join(x for x in ((f"lichess:{li}" if li else ""),
+                                       (f"chess.com:{cc}" if cc else "")) if x)
+        result: dict = {}
+        w.progress.connect(prog.setLabelText)
+        prog.canceled.connect(w.stop)
+        w.failed.connect(lambda msg: (result.update(err=msg), prog.reset()))
+        w.finished_ok.connect(lambda text, n: (result.update(text=text, n=n),
+                                               prog.reset()))
+        w.finished.connect(lambda: setattr(self, "_dl_worker", None))
+        w.start()
+        prog.exec()
+        if w.isRunning():
+            w.stop()
+            w.wait(3000)
+        if result.get("err"):
+            QMessageBox.warning(self, "Stažení partií", result["err"])
+        elif result.get("text"):
+            self._on_games_downloaded(result["text"], result["n"], names)
+
+    def _on_games_downloaded(self, text: str, n: int, source: str) -> None:
+        start_dir = self.config.get("last_dir", "")
+        suggested = os.path.join(
+            start_dir or "", f"{source.replace(':', '_').replace(' + ', '_')}.pgn")
+        path, _ = QFileDialog.getSaveFileName(
+            self, f"Uložit {n} stažených partií", suggested,
+            "PGN soubory (*.pgn);;Vše (*.*)")
+        if path:
+            try:
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            except OSError as e:
+                QMessageBox.warning(self, "Uložení", f"Nepodařilo se uložit:\n{e}")
+                path = ""
+            else:
+                self.config["last_dir"] = os.path.dirname(path)
+                save_config(self.config)
+        if path:
+            self._start_loading(path=path, source=os.path.basename(path))
+        else:
+            self._start_loading(text=text, source=source)
 
     def _start_loading(self, *, path: str | None = None, text: str | None = None,
                        source: str) -> None:
@@ -4521,6 +4643,8 @@ class MainWindow(QMainWindow):
                 "pro každou stranu jiný, u „obě barvy“ by se to míchalo.")
             return
         if getattr(self, "_explorer_worker", None) is not None:
+            return
+        if not self._ensure_network_ok():
             return
         groups = analyze_openings(self.games, player, colors, keep=self._filter_keep)
         tasks = opening_explorer.build_tasks(groups, self.games, colors)

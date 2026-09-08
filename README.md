@@ -35,7 +35,10 @@ Desktopová aplikace (PySide6 / Qt) pro:
   koncovky, materiálové manko, Elo rozdíl soupeře, ztrátu bodů z vyhraných
   pozic a Tactical Awareness, vše přes celou databázi (+ délka partie podle
   výsledku jako tři sloupcové histogramy přes sebe),
-- **filtr databáze** podle roku, tempa hry a síly soupeře – platí pro všechny rozbory hráče.
+- **filtr databáze** podle roku, tempa hry a síly soupeře – platí pro všechny rozbory hráče,
+- **stažení partií** rovnou z **lichess.org** a **chess.com** (menu *Soubor →
+  Stáhnout partie…*) – všechny veřejné partie hráče přes veřejné API, bez
+  přihlášení; z obou serverů najednou, uloží se do PGN a rovnou načte.
 
 Velké databáze (tisíce partií) se načítají **na pozadí** – z každé partie se uloží
 jen hlavičky a tahy, pozice a texty tahů se dopočítají teprve když jsou potřeba.
@@ -74,6 +77,22 @@ a nejsou v repu (viz `.gitignore`):
 
 `analysis_cache.json.gz` jde smazat v menu **Engine → Smazat cache rozborů partií…**,
 postup v úlohách přes **Engine → Smazat postup v taktických úlohách…**.
+
+#### Stažení partií z lichess / chess.com – menu **Soubor → Stáhnout partie…**
+
+Stáhne **všechny veřejné** partie hráče přes veřejné API (bez přihlášení):
+
+- **lichess** – jeden streamovaný PGN endpoint `/api/games/user/{jméno}`
+  (volitelně jen hodnocené),
+- **chess.com** – seznam měsíčních archivů (Published-Data API) + PGN po měsících,
+  sériově.
+
+Vyplň aspoň jedno jméno; obě → partie z obou serverů se spojí do jednoho PGN,
+který se uloží a rovnou načte. U tisíců partií to chvíli trvá (jde zrušit).
+Pokud HTTPS zachytává antivirus/firewall vlastním certifikátem a ověření selže,
+appka se jednou zeptá a může pokračovat bez ověření certifikátu (jen ta relace;
+stahují se jen veřejná PGN). Síťové nástroje jsou v `net_util.py`, používá je
+i porovnání zahájení s populací.
 
 #### Výkon enginu (vlákna, hash) – menu **Engine → Nastavit výkon enginu…**
 
@@ -145,6 +164,7 @@ Ve Windows lze poklikat na `spustit.bat`.
 | Zahrát vlastní tah | klik na figuru + klik na cílové pole |
 | Otevřít PGN | `Ctrl+O` |
 | Vložit PGN z textu | menu Soubor |
+| Stáhnout partie z lichess / chess.com | menu Soubor |
 
 Rychlost plynulého přehrávání se nastavuje posuvníkem pod šachovnicí.
 
@@ -854,6 +874,8 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `patterns.py` | statistické vzorce partií (rošáda, dámy, materiál, struktura, …) + lehké průchody pro kartu Grafy |
 | `openings.py` | zařazení partií podle zahájení (ECO, **s transpozicemi** – podle pozic, ne pořadí tahů), diverzita repertoáru, hloubka teorie/book exit |
 | `opening_explorer.py` | porovnání winrate zahájení hráče s populací přes lichess Opening Explorer (síť + gzip cache) |
+| `game_download.py` | stažení všech veřejných partií hráče z lichess.org a chess.com (síť, na pozadí) |
+| `net_util.py` | sdílené HTTP nástroje (User-Agent, certifi, fallback bez ověření certifikátu při AV/firewall MITM) |
 | `eco.tsv` | databáze zahájení ECO (lichess `chess-openings`, ~3800 variant) |
 | `endgames.py` | rozpoznání a kategorizace koncovek |
 | `tactics.py` | taktické úlohy z rozboru partií: motivy, obtížnost, tolerance, opakování SM-2 (`tactics_progress.json`) |
@@ -863,12 +885,12 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `report_charts.py` | srovnávací grafy pro kartu Report (jedna série na hráče, ze snímků) |
 | `report_export.py` | export porovnání hráčů do PDF (`QTextDocument` → `QPrinter`) |
 | `sample.pgn` | ukázkové partie (Immortal Game, Opera Game) |
-| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, statistika, cache, anomálie |
+| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, stažení partií, statistika, cache, anomálie |
 
 ## Testy
 
 Testy pokrývají moduly bez enginu a bez GUI (čistá matematika a logika; síť
-u `opening_explorer` se v testech mockuje):
+u `opening_explorer` a `game_download` se v testech mockuje):
 
 ```bash
 pip install -r requirements-dev.txt

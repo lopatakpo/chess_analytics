@@ -13,23 +13,20 @@ from __future__ import annotations
 import gzip
 import json
 import os
-import ssl
-import threading
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 
 import chess
 from PySide6.QtCore import QThread, Signal
 
+from net_util import open_url
 from stats_util import bh_reject, one_prop_p
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _CACHE_PATH = os.path.join(_DIR, "opening_explorer_cache.json.gz")
 
 _API = "https://explorer.lichess.org/lichess"
-_UA = "chess_analytics (osobní rozbor partií)"
 
 # spodní hranice Elo pásem, jak je bere Opening Explorer
 _RATING_BANDS = [0, 1000, 1200, 1400, 1600, 1800, 2000, 2200, 2500]
@@ -40,12 +37,6 @@ MIN_PLAYER_GAMES = 8    # míň partií hráče v lince nemá smysl porovnávat
 MIN_POP_GAMES = 50      # míň partií populace = nespolehlivá reference
 TOP_VARIANTS = 30       # kolik nejhranějších variant porovnat
 _MIN_EFFECT = 0.05      # min. věcný rozdíl winrate (jinak neoznačovat)
-
-try:                                   # requests s sebou nese certifi; když je
-    import certifi                     # k dispozici, použij jeho CA balík
-    _SSL_CTX: ssl.SSLContext | None = ssl.create_default_context(cafile=certifi.where())
-except Exception:
-    _SSL_CTX = None
 
 
 # --------------------------------------------------------------- Elo pásma / tempa
@@ -102,8 +93,7 @@ def _fetch(fen: str, ratings: str, speeds: str, timeout: float = 12.0) -> dict |
         "variant": "standard", "fen": fen, "ratings": ratings, "speeds": speeds,
         "moves": 0, "topGames": 0, "recentGames": 0,
     })
-    req = urllib.request.Request(f"{_API}?{q}", headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as r:
+    with open_url(f"{_API}?{q}", timeout=timeout) as r:
         d = json.load(r)
     w, dr, bl = int(d.get("white", 0)), int(d.get("draws", 0)), int(d.get("black", 0))
     tot = w + dr + bl
