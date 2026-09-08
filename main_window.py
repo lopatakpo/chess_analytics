@@ -99,7 +99,7 @@ from move_class import (
 from heatmap_widget import HeatmapWidget
 from histogram_widget import HistogramChart
 from time_heatmap_widget import TimeHeatmap
-from openings import analyze_openings, personal_book_depth, repertoire_diversity
+from openings import analyze_openings, game_opening, personal_book_depth, repertoire_diversity
 from patterns import (
     analyze_patterns,
     distribution_stats,
@@ -3880,8 +3880,16 @@ class MainWindow(QMainWindow):
             return
         side = players[name]
         n_moves = (self.game.ply_count + 1) // 2
+        # výchozí = první tah mimo teorii (knihu hádat nemá smysl)
+        try:
+            _, _, book_ply = game_opening(self.game)
+            first_own = max(1, book_ply // 2 + 1)
+        except Exception:
+            first_own = 1
+        first_own = min(first_own, max(1, n_moves))
         start, ok = QInputDialog.getInt(
-            self, "Hádej tah", "Od kolikátého tahu:", 1, 1, max(1, n_moves), 1)
+            self, "Hádej tah", "Od kolikátého tahu (výchozí = konec teorie):",
+            first_own, 1, max(1, n_moves), 1)
         if not ok:
             return
         dlg = GuessMoveDialog(self.game, self._game_eval, path,

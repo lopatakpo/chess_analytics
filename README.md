@@ -734,7 +734,9 @@ vzorec) proti nejlepšímu tahu enginu – tip, který je v top-3 rozboru, se oh
 okamžitě z cache, jinak si dialog pozici po tvém tahu nechá dopočítat (jedno
 volání enginu). Vidíš svůj tah, přesnost, engine-nejlepší a co padlo v partii;
 na konci průměrná přesnost tvých tipů, shoda s enginem a srovnání s tvou
-skutečnou přesností v té partii. Vybíráš barvu a od kolikátého tahu začít.
+skutečnou přesností v té partii. Vybíráš barvu a od kolikátého tahu začít –
+předvyplní se **první tah mimo teorii** (konec zahajovací linie podle `eco.tsv`),
+ať netipuješ knihu.
 
 ### Report (karta *Report*)
 
