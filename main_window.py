@@ -4552,6 +4552,7 @@ class MainWindow(QMainWindow):
                         cat_item.setToolTip(
                             0, f"Populace{seg}, n={pl['n']:,}: ".replace(",", " ")
                             + "; ".join(parts))
+            self.endgame_tree.addTopLevelItem(cat_item)
 
             pw_rows = list(cat.by_pawns())
             pw_sig = _sig_flags([[e.result for e in ent] for _, ent in pw_rows], w0, n0)
