@@ -252,7 +252,17 @@ def tc_split(state: dict, label: str) -> list[dict]:
 
 
 # --------------------------------------------------------------- perzistence
-def save_population(state: dict, path: str = POP_PATH) -> None:
+#
+# Pozor: ``path`` NESMÍ mít výchozí hodnotu svázanou na ``POP_PATH`` napevno
+# (``def f(path=POP_PATH)``) – výchozí argument se vyhodnotí jednou při
+# definici funkce (import modulu), takže by se v testech nedal přesměrovat
+# přes ``monkeypatch.setattr(endgame_dump, "POP_PATH", ...)`` a omylem by se
+# místo dočasného souboru přepsala SKUTEČNÁ populační data uživatele (přesně
+# tohle se jednou stalo – test tiše přepsal `endgame_population.json.gz`
+# vedle aplikace daty ze syntetické partie). ``POP_PATH`` se proto čte jako
+# modulová proměnná AŽ uvnitř těla funkce, ne jako výchozí hodnota parametru.
+def save_population(state: dict, path: str | None = None) -> None:
+    path = path or POP_PATH
     try:
         tmp = path + ".tmp"
         with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as fh:
@@ -262,7 +272,8 @@ def save_population(state: dict, path: str = POP_PATH) -> None:
         pass
 
 
-def load_population(path: str = POP_PATH) -> dict | None:
+def load_population(path: str | None = None) -> dict | None:
+    path = path or POP_PATH
     try:
         with gzip.open(path, "rt", encoding="utf-8") as fh:
             st = json.load(fh)
@@ -275,7 +286,8 @@ def load_population(path: str = POP_PATH) -> dict | None:
     return None
 
 
-def clear_population(path: str = POP_PATH) -> None:
+def clear_population(path: str | None = None) -> None:
+    path = path or POP_PATH
     try:
         os.remove(path)
     except OSError:

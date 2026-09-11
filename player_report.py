@@ -221,8 +221,12 @@ def best_index(key: str, better: str | None, values: list) -> set[int]:
 
 # ---------------------------------------------------------------- úložiště
 class ReportStore:
-    def __init__(self, path: str = _STORE_PATH) -> None:
-        self._path = path
+    def __init__(self, path: str | None = None) -> None:
+        # ``path=None`` → ``_STORE_PATH`` se čte až tady, ne jako výchozí
+        # hodnota parametru (ta by se svázala napevno už při importu modulu
+        # a nešla by v testech bezpečně přesměrovat) – viz stejná oprava
+        # a její důvod v endgame_dump.py.
+        self._path = path or _STORE_PATH
         self._data: dict = {}
         try:
             with open(self._path, encoding="utf-8") as fh:

@@ -3,6 +3,8 @@
 Chytá třídu chyb „při úpravě vypadlo addTopLevelItem / addChild" (přesně to se
 jednou stalo kartě Koncovky).
 """
+import io
+import os
 import random
 
 import chess
@@ -54,7 +56,7 @@ def window(qapp):
         _endgame_game(i, "hrac" if i % 2 else "souper",
                       "souper" if i % 2 else "hrac")
         for i in range(24)) + "\n\n"
-    games = list(read_games(__import__("io").StringIO(text)))
+    games = list(read_games(io.StringIO(text)))
     w = main_window.MainWindow()
     w.games = games
     w._filter_keep = None
@@ -73,11 +75,15 @@ def test_endgames_tab_populates(window):
     assert it.child(0).childCount() > 0           # jednotlivé partie
 
 
-def test_endgames_tab_with_population_overlay(window, tmp_path, monkeypatch):
+def test_endgames_tab_with_population_overlay(window, tmp_path):
     import endgame_dump
-    monkeypatch.setattr(endgame_dump, "POP_PATH", str(tmp_path / "pop.json.gz"))
+    # cesta se předává EXPLICITNĚ (nespoléhat jen na monkeypatch POP_PATH) –
+    # ať se tenhle test nemůže omylem zapsat přes skutečná data uživatele
+    # vedle aplikace, i kdyby se izolace přes monkeypatch někde rozbila.
+    pop_path = str(tmp_path / "pop.json.gz")
     st = endgame_dump.aggregate(_write_dump(tmp_path))
-    endgame_dump.save_population(st)
+    endgame_dump.save_population(st, pop_path)
+    assert os.path.exists(pop_path)
     window._eg_pop = st
     window._update_endgames()
     assert window.endgame_tree.topLevelItemCount() > 0
