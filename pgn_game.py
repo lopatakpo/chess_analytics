@@ -14,16 +14,20 @@ import chess
 import chess.pgn
 
 _ANNOT_RE = re.compile(r"\[%[^\]]*\]")  # {[%clk ...]}, {[%eval ...]} apod.
+_CLK_RE = re.compile(r"\[%clk\s+(\d+):(\d+):(\d+(?:\.\d+)?)\]")
 
 
 class LoadedGame:
-    __slots__ = ("headers", "moves", "_comment_map", "_boards", "_keys", "_sans")
+    __slots__ = ("headers", "moves", "_comment_map", "_clock_map",
+                "_boards", "_keys", "_sans")
 
     def __init__(self, headers: dict, moves: list[chess.Move],
-                 comment_map: dict[int, str] | None = None) -> None:
+                 comment_map: dict[int, str] | None = None,
+                 clock_map: dict[int, float] | None = None) -> None:
         self.headers = dict(headers)
         self.moves: list[chess.Move] = list(moves)
         self._comment_map: dict[int, str] = dict(comment_map or {})
+        self._clock_map: dict[int, float] = dict(clock_map or {})
         self._boards: list[chess.Board] | None = None
         self._keys: list | None = None
         self._sans: list[str] | None = None
@@ -105,6 +109,17 @@ class LoadedGame:
         """Textový komentář za `ply`-tým půltahem (ply od 1)."""
         return self._comment_map.get(ply - 1, "")
 
+    @property
+    def clocks(self) -> list[float | None]:
+        """Zbývající čas na hodinách (s) hned PO každém půltahu – z anotace
+        ``[%clk H:MM:SS]`` v PGN (lichess/chess.com export). ``None`` na
+        indexech bez anotace (partie bez časových razítek, nebo dřívější
+        tahy u částečně anotovaného PGN). Délka = ``len(self.moves)``."""
+        return [self._clock_map.get(i) for i in range(len(self.moves))]
+
+    def has_clocks(self) -> bool:
+        return bool(self._clock_map)
+
     def label(self) -> str:
         h = self.headers
         white = h.get("White", "?")
@@ -128,6 +143,7 @@ class _MainlineVisitor(chess.pgn.BaseVisitor):
         self._headers: dict = {}
         self._moves: list[chess.Move] = []
         self._comments: dict[int, str] = {}
+        self._clocks: dict[int, float] = {}
 
     def visit_header(self, name, value) -> None:
         self._headers[name] = value
@@ -136,6 +152,12 @@ class _MainlineVisitor(chess.pgn.BaseVisitor):
         self._moves.append(move)
 
     def visit_comment(self, comment) -> None:
+        m = _CLK_RE.search(comment)
+        if m:
+            h, mi, s = m.groups()
+            i = len(self._moves) - 1
+            if i >= 0:
+                self._clocks[i] = int(h) * 3600 + int(mi) * 60 + float(s)
         txt = _ANNOT_RE.sub("", comment).strip()
         if txt:
             i = len(self._moves) - 1  # -1 = komentář před 1. tahem
@@ -145,7 +167,7 @@ class _MainlineVisitor(chess.pgn.BaseVisitor):
         return chess.pgn.SKIP
 
     def result(self) -> LoadedGame:
-        return LoadedGame(self._headers, self._moves, self._comments)
+        return LoadedGame(self._headers, self._moves, self._comments, self._clocks)
 
 
 def read_games(fh):

@@ -105,6 +105,7 @@ from histogram_widget import HistogramChart
 from time_heatmap_widget import TimeHeatmap
 import net_util
 import opening_explorer
+import time_stats
 from game_download import GameDownloadWorker
 from openings import analyze_openings, game_opening, personal_book_depth, repertoire_diversity
 from patterns import (
@@ -583,6 +584,9 @@ class MainWindow(QMainWindow):
         self._tactics_attempted = False              # pokus o aktuální úlohu už započítán?
         self._tactics_wrong = 0                      # špatných pokusů o aktuální úlohu
         self._tactics_extractor: TacticsExtractor | None = None
+        # karta Časový management
+        self._time_worker = None
+        self._time_last_result: dict | None = None
         # karta Report (uložené snímky statistik hráčů + porovnání)
         self._report_store = ReportStore()
         self._report_compare: list = []              # aktuálně porovnávané snímky
@@ -920,6 +924,9 @@ class MainWindow(QMainWindow):
 
         # =================== karta 9: Report ===================
         self.top_tabs.addTab(self._build_report_page(), "Report")
+
+        # =================== karta 10: Časový management ===================
+        self.top_tabs.addTab(self._build_time_page(), "Časový management")
         self.top_tabs.currentChanged.connect(self._on_top_tab_changed)
 
         self._update_engine_status()
@@ -1590,6 +1597,115 @@ class MainWindow(QMainWindow):
     def _on_tactics_extract_failed(self, msg: str) -> None:
         self.btn_tac_find.setEnabled(True)
         self.tac_summary.setText(f"Chyba při hledání úloh: {msg}")
+
+    # ------------------------------------------------- časový management
+    def _run_time_analysis(self) -> None:
+        if self._time_worker is not None and self._time_worker.isRunning():
+            self._time_worker.stop()
+            return
+        player = self.cmb_player.currentData()
+        if not self.games or not player:
+            self.time_summary.setText("Načti PGN databázi a vyber hráče.")
+            return
+        cache = self._acc_cache
+        if cache is None:
+            cache = self._acc_cache = AnalysisCache()
+        self.time_tree.clear()
+        self.time_summary.setText("Počítám čas na tah… (běží na pozadí, engine se "
+                                  "znovu nevolá, jen se čte cache z Přesnosti)")
+        self.time_progress.setRange(0, len(self.games))
+        self.time_progress.setValue(0)
+        self.time_progress.setVisible(True)
+        self.btn_time_run.setText("■ Zastavit")
+        w = time_stats.TimeManagementWorker(
+            self.games, player, cache, "both", self._filter_keep,
+            use_wdl=self._use_wdl(), parent=self)
+        self._time_worker = w
+        w.progress.connect(lambda d, t: self.time_progress.setValue(d))
+        w.done.connect(self._on_time_done)
+        w.failed.connect(self._on_time_failed)
+        w.finished.connect(self._on_time_thread_finished)
+        w.finished.connect(w.deleteLater)
+        w.start()
+
+    def _on_time_thread_finished(self) -> None:
+        self._time_worker = None
+        self.btn_time_run.setText("▶ Spustit rozbor")
+        self.time_progress.setVisible(False)
+
+    def _on_time_done(self, result: dict) -> None:
+        self._time_last_result = result
+        self._fill_time_tree(result)
+
+    def _on_time_failed(self, msg: str) -> None:
+        self.time_summary.setText(f"Chyba: {msg}")
+
+    def _fill_time_tree(self, result: dict) -> None:
+        self.time_tree.clear()
+        player = self.cmb_player.currentData() or "?"
+        n_ok, req = result["n_games"], result["requested"]
+        skip_bits = []
+        if result["n_no_clock"]:
+            skip_bits.append(f"{result['n_no_clock']}× bez časových razítek")
+        if result["n_no_tc"]:
+            skip_bits.append(f"{result['n_no_tc']}× nerozpoznané tempo")
+        if result["n_no_cache"]:
+            skip_bits.append(f"{result['n_no_cache']}× ještě nerozebráno (karta Přesnost)")
+        skip_txt = f"  (přeskočeno: {', '.join(skip_bits)})" if skip_bits else ""
+        if not n_ok:
+            self.time_summary.setText(
+                f"{player}: z {req} partií se nenašla žádná s časem na hodinách "
+                f"a hotovým rozborem.{skip_txt} Nejdřív partie rozeber na kartě Přesnost.")
+            return
+        self.time_summary.setText(
+            f"{player}: {n_ok} z {req} partií se známým časem a rozborem.{skip_txt}   "
+            f"Ø čas/tah a medián ve vteřinách; přesnost/ACPL/hrubky jako na kartě "
+            f"Přesnost, jen po jednotlivých tazích, ne po partiích.")
+
+        def _row(label: str, st: dict) -> QTreeWidgetItem:
+            it = SortableItem([
+                label, str(st["n"]),
+                self._fmt(st["mean_time"], ".1f") + " s" if st["mean_time"] is not None else "–",
+                self._fmt(st["median_time"], ".1f") + " s" if st["median_time"] is not None else "–",
+                self._fmt(st["accuracy"], ".1f"),
+                self._fmt(st["acpl"], ".0f"),
+                self._fmt(st["blund_100"], ".1f"),
+            ])
+            it.setData(1, SORT_ROLE, st["n"])
+            it.setData(2, SORT_ROLE, st["mean_time"] if st["mean_time"] is not None else -1.0)
+            it.setData(4, SORT_ROLE, st["accuracy"] if st["accuracy"] is not None else -1.0)
+            if st["accuracy"] is not None:
+                it.setBackground(4, self._acc_brush(st["accuracy"], 55, 95))
+            for c in range(1, 7):
+                it.setTextAlignment(c, Qt.AlignCenter)
+            return it
+
+        self.time_tree.setSortingEnabled(False)
+        top = QTreeWidgetItem(["Souhrn", "", "", "", "", "", ""])
+        f = top.font(0)
+        f.setBold(True)
+        top.setFont(0, f)
+        top.setFirstColumnSpanned(True)
+        self.time_tree.addTopLevelItem(top)
+        top.addChild(_row("Celkem", result["overall"]))
+        top.setExpanded(True)
+
+        for title, rows in (("Podle fáze partie", result["by_phase"]),
+                            ("Podle tempa", result["by_tc"]),
+                            ("Podle tažené figury", result["by_piece"]),
+                            ("Podle délky přemýšlení", result["by_bin"])):
+            if not rows:
+                continue
+            g_item = QTreeWidgetItem([title, "", "", "", "", "", ""])
+            gf = g_item.font(0)
+            gf.setBold(True)
+            g_item.setFont(0, gf)
+            g_item.setFirstColumnSpanned(True)
+            self.time_tree.addTopLevelItem(g_item)
+            for label, st in rows:
+                g_item.addChild(_row(label, st))
+            g_item.setExpanded(True)
+        self._resort(self.time_tree)
 
     def _refresh_tactics_after_analysis(self) -> None:
         if hasattr(self, "_tactics_page") and self.top_tabs.currentWidget() is self._tactics_page:
@@ -2860,6 +2976,49 @@ class MainWindow(QMainWindow):
             f"skóre (výhra 1 bod, remíza půl bodu, prohra 0 – stejná definice jako "
             f"u grafu „Úspěšnost podle zahájení“). Čas je z UTCTime v PGN "
             f"hlavičce převedený na místní čas ČR (CET/CEST, včetně letního času).")
+
+    def _build_time_page(self) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        row = QHBoxLayout()
+        self.btn_time_run = QPushButton("▶ Spustit rozbor")
+        self.btn_time_run.clicked.connect(self._run_time_analysis)
+        row.addWidget(self.btn_time_run)
+        row.addStretch(1)
+        lay.addLayout(row)
+        self.time_progress = QProgressBar()
+        self.time_progress.setVisible(False)
+        lay.addWidget(self.time_progress)
+        self.time_summary = QLabel("Načti PGN databázi a vyber hráče.")
+        self.time_summary.setWordWrap(True)
+        self.time_summary.setStyleSheet("color:#555;")
+        lay.addWidget(self.time_summary)
+        self.time_tree = QTreeWidget()
+        self.time_tree.setColumnCount(7)
+        self.time_tree.setHeaderLabels(
+            ["Kategorie", "Tahů", "Ø čas/tah", "Medián", "Přesnost %", "ACPL", "Hrubky/100"])
+        th = self.time_tree.header()
+        th.setStretchLastSection(False)
+        th.setSectionResizeMode(0, QHeaderView.Stretch)
+        for col, wdt in ((1, 64), (2, 76), (3, 64), (4, 84), (5, 60), (6, 84)):
+            th.setSectionResizeMode(col, QHeaderView.Fixed)
+            self.time_tree.setColumnWidth(col, wdt)
+        self.time_tree.setSortingEnabled(True)
+        self.time_tree.sortByColumn(0, Qt.AscendingOrder)
+        self.time_tree.setToolTip("Klikni na hlavičku sloupce pro řazení")
+        lay.addWidget(self.time_tree, stretch=1)
+        hint = QLabel(
+            "Čas na tah z PGN anotace „[%clk]“ (lichess/chess.com export) proti kvalitě "
+            "tahu ze stávajícího rozboru (karta Přesnost – engine se tu znovu nevolá, jen "
+            "se čte cache). Partie bez časových razítek nebo bez rozpoznaného tempa "
+            "(TimeControl) se přeskočí – appka to napíše do souhrnu. „Podle délky "
+            "přemýšlení“ odpovídá na „jak dlouho přemýšlím a s jakou úspěšností“ – "
+            "porovnává přesnost/hrubky/100 podle toho, kolik vteřin tah zabral, napříč "
+            "celou databází.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#888;")
+        lay.addWidget(hint)
+        return page
 
     def _build_move_pie(self, counts: dict, title: str,
                         pct_slices: bool = False) -> tuple[int, bool]:

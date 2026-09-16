@@ -186,6 +186,7 @@ karty okna:
 | **Grafy** | eval graf partie, vývoj v čase (i konverze/záchrana/Tactical Awareness), divokost partií, úspěšnost podle zahájení, kumulativní štěstí, dotahování, radar profilu hráče, kritičnost×přesnost, koláč tahů podle chess.com kategorie, heatmapa úspěšnosti podle dne/hodiny, Elo hráč×soupeř scatter, + histogramy se zvonovou křivkou (délka, výsledek, první braní, koncovka, materiál, Elo, ztráta bodů, Tactical Awareness) přes celou DB |
 | **Taktika** | taktické úlohy z hráčových partií (přehlédnuté i nalezené), motivy, obtížnost, řešení na šachovnici s tolerancí, hvězdička, opakování SM-2 |
 | **Report** | uložené snímky statistik hráčů (Přesnost + Vzorce) a jejich vzájemné porovnání – tabulka metrik vedle sebe, srovnávací grafy (radar / sloupce / kategorie tahů), export do PDF |
+| **Časový management** | čas na tah (z PGN `[%clk]`) vs. přesnost/ACPL/hrubky – podle fáze partie, tempa, tažené figury a délky přemýšlení (na pozadí, čte cache z Přesnosti, engine se znovu nevolá) |
 
 Barvu hráče (**jako bílý / jako černý / obě barvy**) si volí *Heatmapa*,
 *Zahájení*, *Vzorce*, *Přesnost* i *Rozbor pozice* samostatně (*Koncovky* vždy pro obě barvy);
@@ -868,6 +869,31 @@ každého hráče – jako samostatný A4 soubor k poslání nebo tisku (`QTextD
 Reporty uložené starší verzí appky nemají podklady pro histogramy/heatmapu –
 u porovnání to appka oznámí, stačí je uložit znovu.
 
+### Časový management (karta *Časový management*)
+
+Čas na tah (z PGN anotace **`[%clk]`** – lichess/chess.com export) proti kvalitě
+tahu (`clock_util.py`, `time_stats.py`). **Nevolá engine** – čte evaly ze stejné
+cache jako karta *Přesnost*, takže partie musí být napřed rozebraná (libovolnou
+hloubkou, „důkladný rozbor" netřeba). Běží **na pozadí** (přehrání tahů kvůli
+figuře a fázi partie je u tisíců partií práce na desítky sekund).
+
+Čas na tah se počítá z posloupnosti zbývajících časů: `vteřiny = (čas před
+tahem) + přírůstek − (čas po tahu)`. Partie bez `[%clk]` anotace nebo bez
+rozpoznatelného tempa (hlavička `TimeControl`, korespondenční partie vynechány)
+appka přeskočí a napíše kolik.
+
+Čtyři rozklady, stejné sloupce jako na *Přesnosti* (přesnost, ACPL, hrubky/100)
+plus průměrný a mediánový čas na tah:
+
+- **podle fáze partie** (zahájení / středhra / koncovka),
+- **podle tempa** (bullet/blitz/rapid/…, když partie mají různá),
+- **podle tažené figury**,
+- **podle délky přemýšlení** (< 2 s, 2–5 s, 5–15 s, 15–30 s, 30–60 s, 60 s a víc)
+  – přímá odpověď na „jak dlouho přemýšlím a s jakou úspěšností": u typického
+  hráče bývá vidět, že bleskové tahy (< 2 s, většinou nucené/zjevné) drží
+  vysokou přesnost, kolem 5–15 s je propad (dost dlouho na to nechat se zmást,
+  málo na to dopočítat), a s rostoucím časem nad 30 s přesnost zase stoupá.
+
 ### Vlastní tahy (analýza na šachovnici)
 
 Z jakékoli pozice můžeš klikáním na šachovnici zahrát vlastní tahy a zkoumat
@@ -885,7 +911,9 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `main.py` | spouštěč |
 | `main_window.py` | hlavní okno, navigace, propojení částí |
 | `board_widget.py` | vykreslení šachovnice (chess.svg → QSvgWidget), velká i malá |
-| `pgn_game.py` | načtení PGN, model partie a pozic |
+| `pgn_game.py` | načtení PGN, model partie a pozic (i časové značky `[%clk]`) |
+| `clock_util.py` | čas na tah z `[%clk]` – parsování `TimeControl`, vteřiny na tah, koše délky přemýšlení |
+| `time_stats.py` | karta Časový management – čas na tah vs. přesnost/ACPL/hrubky (bez enginu, čte cache) |
 | `pgn_stream.py` | streamované čtení PGN i z `.pgn.zst` / `.gz` / `.bz2` / `.xz`, po jedné partii |
 | `endgame_dump.py` | populační statistika koncovek z měsíčního dumpu lichess (stream, na pozadí) |
 | `engine_analyzer.py` | vlákno s UCI enginem a průběžnou analýzou pozice |
@@ -918,7 +946,7 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `report_charts.py` | srovnávací grafy pro kartu Report (jedna série na hráče, ze snímků) |
 | `report_export.py` | export porovnání hráčů do PDF (`QTextDocument` → `QPrinter`) |
 | `sample.pgn` | ukázkové partie (Immortal Game, Opera Game) |
-| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, stažení partií, streamované čtení PGN, populace koncovek, statistika, cache, anomálie |
+| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, stažení partií, streamované čtení PGN, populace koncovek, čas na tah, statistika, cache, anomálie |
 
 ## Testy
 
