@@ -7,6 +7,7 @@ from stats_util import (
     norm_cdf, two_prop_p, one_prop_p, bh_reject, winrate_outliers, wilson_interval,
     estimate_shrink_m, shrink_rate, elo_expected, elo_expected_from_delta,
     luck_z, kaplan_meier, logistic_fit, logistic_predict,
+    score_pct, two_score_p, one_score_p, score_outliers,
 )
 
 
@@ -85,6 +86,59 @@ def test_winrate_outliers_efektni_prah_utlumi_trivialni_rozdil():
     buckets = [(5100, 10000)]
     flags, _ = winrate_outliers(buckets, w0=10000, n0=20000, min_effect=0.025)
     assert flags == [False]
+
+
+def test_score_pct_zapocita_remizu_jako_pul_bodu():
+    assert score_pct(5, 0, 5) == pytest.approx(0.5)          # 5V 5P, bez remíz
+    assert score_pct(0, 10, 0) == pytest.approx(0.5)          # samé remízy = taky 50 %
+    assert score_pct(3, 4, 3) == pytest.approx(0.5)           # 3V+4R+3P: (3+2)/10
+    assert score_pct(0, 0, 0) is None
+
+
+def test_score_pct_vice_remiz_pri_stejnem_poctu_vyher():
+    # stejný počet výher (3), ale víc remíz → vyšší skóre než čistý podíl výher
+    malo_remiz = score_pct(3, 1, 6)     # (3+0.5)/10 = 0.35
+    hodne_remiz = score_pct(3, 6, 1)    # (3+3)/10 = 0.6
+    assert hodne_remiz > malo_remiz
+    assert malo_remiz == pytest.approx(0.35)
+    assert hodne_remiz == pytest.approx(0.6)
+
+
+def test_two_score_p_stejne_skore_je_jedna():
+    assert two_score_p(5, 0, 5, 5, 0, 5) == pytest.approx(1.0)
+    # stejné skóre (60 %), různé rozdělení výher/remíz – pořád stejné skóre → p≈1
+    assert two_score_p(6, 0, 4, 4, 4, 2) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_two_score_p_rozliseny_rozdil_skore():
+    p = two_score_p(60, 0, 40, 40, 0, 60)   # 60 % vs 40 %, N=100 každý
+    assert p is not None and p < 0.01
+
+
+def test_two_score_p_remizovy_soubor_ma_mensi_rozptyl():
+    # obě dvojice mají skóre 50 % vs 60 %, ale jedna je čistě V/P, druhá skoro
+    # samé remízy → remízová dvojice má MENŠÍ rozptyl skóre, tedy MENŠÍ p-hodnotu
+    # (rozdíl je „jistější“) při stejném N a stejném rozdílu průměrů
+    p_vp = two_score_p(50, 0, 50, 60, 0, 40)
+    p_remizy = two_score_p(0, 100, 0, 20, 80, 0)   # skóre 50 % vs 60 %, hodně remíz
+    assert p_remizy < p_vp
+
+
+def test_one_score_p_proti_zname_referenci():
+    assert one_score_p(55, 0, 45, 0.55) == pytest.approx(1.0, abs=1e-6)
+    assert one_score_p(70, 0, 30, 0.50) < 0.001
+    assert one_score_p(0, 0, 0, 0.5) is None
+    assert one_score_p(5, 0, 5, 0.0) is None
+
+
+def test_score_outliers_oznaci_odlisny_kos_a_pocita_remizy():
+    # celek: 1000V/400R/600P (skóre 60 %); koš A čistě 60V/40P (skóre 60 % –
+    # stejné jako celek, i po odečtení by nemělo vyjít významné);
+    # koš B 90V/10P (skóre 90 %, jasně nad celkem)
+    buckets = [(60, 0, 40), (90, 0, 10)]
+    flags, pvals = score_outliers(buckets, w0=1000, d0=400, l0=600)
+    assert flags == [False, True]
+    assert pvals[1] is not None and pvals[1] < 0.05
 
 
 def test_wilson_interval_obklopuje_bodovy_odhad():

@@ -48,9 +48,14 @@ def expected_points(cp: int) -> float:
 
 
 def move_accuracy(win_before: float, win_after: float) -> float:
-    """Přesnost jednoho tahu (0–100) z poklesu win% z pohledu hráče (lichess vzorec)."""
+    """Přesnost jednoho tahu (0–100) z poklesu win% z pohledu hráče – doslovný
+    lichess vzorec (103,1668·e^(−0,04354·drop) − 3,1669). Při drop=0 dá
+    99,9999…, ne rovných 100 – to je vlastnost i samotného lichess vzorce
+    (zaokrouhlením na zobrazovanou desetinu se to ztratí), ne chyba zdejšího
+    přepisu; dřív tu byl navíc člen +1.0, co s tím „opravoval“ jen kosmetiku
+    a jinak celou křivku posouval o ~1 p.b. nahoru – odstraněno."""
     drop = max(0.0, win_before - win_after)
-    acc = 103.1668 * math.exp(-0.04354 * drop) - 3.1669 + 1.0
+    acc = 103.1668 * math.exp(-0.04354 * drop) - 3.1669
     return max(0.0, min(100.0, acc))
 
 

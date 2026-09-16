@@ -1,0 +1,310 @@
+<title>Audit šachové analytiky</title>
+<style>
+:root{
+  --paper:#f1efe4;
+  --paper-raised:#e8e4d4;
+  --ink:#20241d;
+  --ink-soft:#4d5346;
+  --line:#cdc6ae;
+  --line-soft:#ddd8c4;
+  --brass:#8a6423;
+  --brass-soft:#b98f3f;
+  --ok:#3d7a53;
+  --ok-bg:#e2ecdf;
+  --warn:#a85f14;
+  --warn-bg:#f2e3cd;
+  --heuristic:#5a5aa0;
+  --heuristic-bg:#e6e4f3;
+  --code-bg:#e9e4d1;
+  --shadow: 0 1px 0 rgba(32,36,29,.06);
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme: dark){
+    --paper:#15170f;
+    --paper-raised:#1c1f15;
+    --ink:#e9e6d8;
+    --ink-soft:#b3ae98;
+    --line:#3a3b2a;
+    --line-soft:#2a2c1e;
+    --brass:#d3a75a;
+    --brass-soft:#e9c483;
+    --ok:#7fc399;
+    --ok-bg:#1e2c20;
+    --warn:#e0a659;
+    --warn-bg:#332415;
+    --heuristic:#a6a6e0;
+    --heuristic-bg:#232336;
+    --code-bg:#20221645;
+    --shadow: 0 1px 0 rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#15170f;
+  --paper-raised:#1c1f15;
+  --ink:#e9e6d8;
+  --ink-soft:#b3ae98;
+  --line:#3a3b2a;
+  --line-soft:#2a2c1e;
+  --brass:#d3a75a;
+  --brass-soft:#e9c483;
+  --ok:#7fc399;
+  --ok-bg:#1e2c20;
+  --warn:#e0a659;
+  --warn-bg:#332415;
+  --heuristic:#a6a6e0;
+  --heuristic-bg:#232336;
+  --code-bg:#20221645;
+  --shadow: 0 1px 0 rgba(0,0,0,.4);
+}
+
+*{box-sizing:border-box;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Public Sans","Segoe UI",system-ui,sans-serif;
+  padding-inline:20px;
+  padding-block:40px 80px;
+  max-width:920px;
+  margin-inline:auto;
+  line-height:1.55;
+  font-size:16px;
+}
+h1,h2,h3{
+  font-family:"Fraunces","Georgia",serif;
+  font-weight:600;
+  text-wrap:balance;
+  color:var(--ink);
+}
+.brand{
+  display:flex; align-items:baseline; justify-content:space-between; gap:16px;
+  border-bottom:2px solid var(--ink); padding-bottom:18px; margin-bottom:6px;
+  flex-wrap:wrap;
+}
+.brand .mark{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--brass); font-weight:700;}
+h1.title{font-size:clamp(28px,4.4vw,40px); margin:2px 0 0; line-height:1.1;}
+.subtitle{font-family:"Public Sans",sans-serif; color:var(--ink-soft); font-size:15.5px; max-width:62ch; margin-top:10px;}
+.meta-row{display:flex; gap:18px; flex-wrap:wrap; font-size:13px; color:var(--ink-soft); margin-top:14px; font-variant-numeric:tabular-nums;}
+.meta-row b{color:var(--ink); font-weight:700;}
+
+/* ---- souhrn ---- */
+.summary{
+  margin-top:34px; padding:22px 24px; background:var(--paper-raised);
+  border:1px solid var(--line); border-radius:4px;
+}
+.summary h2{font-size:20px; margin:0 0 12px;}
+.summary p{margin:0 0 10px; max-width:70ch;}
+.verdict-tally{display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 18px;}
+.tally-chip{
+  display:flex; align-items:center; gap:8px; padding:7px 12px; border-radius:3px;
+  font-size:13.5px; font-weight:600; border:1px solid var(--line);
+}
+.tally-chip .n{font-family:"JetBrains Mono",monospace; font-size:15px;}
+.findings{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:10px;}
+.findings li{
+  display:grid; grid-template-columns:auto 1fr; gap:10px 12px; align-items:start;
+  padding-top:10px; border-top:1px dashed var(--line-soft); font-size:14.5px;
+}
+.findings li:first-child{border-top:none; padding-top:0;}
+
+/* ---- obsah / nav ---- */
+.toc{
+  margin-top:28px; display:grid; grid-template-columns:repeat(3,1fr); gap:6px 22px;
+  font-size:14px; padding:16px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+}
+.toc a{color:var(--ink); text-decoration:none; display:flex; gap:8px; align-items:baseline;}
+.toc a:hover{color:var(--brass);}
+.toc .num{font-family:"JetBrains Mono",monospace; color:var(--brass); font-size:12.5px;}
+
+/* ---- sekce ---- */
+section.group{margin-top:52px;}
+.group-head{display:flex; align-items:baseline; gap:14px; margin-bottom:6px;}
+.group-num{font-family:"JetBrains Mono",monospace; color:var(--brass-soft); font-size:15px; font-weight:700;}
+h2.group-title{font-size:25px; margin:0;}
+.group-intro{color:var(--ink-soft); max-width:70ch; font-size:14.5px; margin:8px 0 22px;}
+
+/* ---- metrika karta ---- */
+.metric{
+  border:1px solid var(--line); border-radius:4px; background:var(--paper-raised);
+  box-shadow:var(--shadow); padding:18px 20px; margin-bottom:14px;
+}
+.metric-head{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px;}
+.metric-name{font-family:"Fraunces",serif; font-weight:600; font-size:18.5px;}
+.metric-code{font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--ink-soft);}
+.badge{
+  font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+  padding:3px 9px; border-radius:20px; white-space:nowrap;
+}
+.badge.ok{background:var(--ok-bg); color:var(--ok);}
+.badge.warn{background:var(--warn-bg); color:var(--warn);}
+.badge.heuristic{background:var(--heuristic-bg); color:var(--heuristic);}
+.formula{
+  font-family:"JetBrains Mono",monospace; font-size:13.5px; background:var(--code-bg);
+  border:1px solid var(--line-soft); border-radius:3px; padding:8px 12px; margin:8px 0 12px;
+  overflow-x:auto; white-space:pre;
+}
+.field-grid{display:grid; grid-template-columns:96px 1fr; gap:6px 14px; font-size:14.5px;}
+.field-grid dt{color:var(--brass); font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.03em; padding-top:2px;}
+.field-grid dd{margin:0; padding-bottom:10px;}
+.field-grid dd.range{font-family:"JetBrains Mono",monospace; font-size:13.5px;}
+.note{
+  margin-top:4px; padding-top:10px; border-top:1px dashed var(--line-soft);
+  font-size:13.5px; color:var(--ink-soft);
+}
+.note b{color:var(--ink);}
+
+footer{margin-top:60px; padding-top:18px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft);}
+
+@media (max-width:640px){
+  .toc{grid-template-columns:1fr 1fr;}
+  .field-grid{grid-template-columns:78px 1fr;}
+}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<div class="brand">
+  <div>
+    <div class="mark">chess_analytics · interní audit</div>
+    <h1 class="title">Kontrola výpočtů analytiky</h1>
+    <p class="subtitle">Soupis všech statistických a analytických metrik v aplikaci — co znamenají, jakých hodnot nabývají, jak je číst, a jestli implementace odpovídá tomu, co tvrdí.</p>
+  </div>
+</div>
+<div class="meta-row">
+  <span><b>36</b> metrik v <b>9</b> skupinách</span>
+  <span><b>32</b> beze změny — implementace sedí</span>
+  <span><b>3</b> vlastní heuristiky (disclosed)</span>
+  <span><b>1</b> drobná odchylka k ověření</span>
+</div>
+
+<div class="summary">
+  <h2>Závěr</h2>
+  <p>Prošel jsem <code style="font-family:'JetBrains Mono',monospace">accuracy.py</code>, <code style="font-family:'JetBrains Mono',monospace">charakter.py</code>, <code style="font-family:'JetBrains Mono',monospace">accuracy_batch.py</code>, <code style="font-family:'JetBrains Mono',monospace">stats_util.py</code>, <code style="font-family:'JetBrains Mono',monospace">move_class.py</code>, <code style="font-family:'JetBrains Mono',monospace">openings.py</code>, <code style="font-family:'JetBrains Mono',monospace">endgames.py</code>, <code style="font-family:'JetBrains Mono',monospace">endgame_dump.py</code>, <code style="font-family:'JetBrains Mono',monospace">opening_explorer.py</code> a <code style="font-family:'JetBrains Mono',monospace">anomaly.py</code> vzorec po vzorci. Statistické nástroje (Wilsonův interval, empirical-Bayes shrinkage, Benjamini–Hochberg, Kaplan–Meier, dvou/jednovýběrový z-test) jsou textbook-správné implementace. Šachové metriky, co appka výslovně staví na lichess vzorci (win%, přesnost tahu), sedí na zdrojový vzorec s jednou drobnou odchylkou popsanou níže. Metriky označené jako „vlastní heuristika“ appka sama v UI přiznává, že nejsou standard — to je v pořádku, jde jen o to je takhle i číst.</p>
+  <div class="verdict-tally">
+    <span class="tally-chip" style="border-color:var(--ok)"><span style="color:var(--ok)">●</span> sedí <span class="n">32</span></span>
+    <span class="tally-chip" style="border-color:var(--heuristic)"><span style="color:var(--heuristic)">●</span> vlastní heuristika (disclosed) <span class="n">3</span></span>
+    <span class="tally-chip" style="border-color:var(--warn)"><span style="color:var(--warn)">●</span> k ověření <span class="n">1</span></span>
+  </div>
+  <ol class="findings">
+    <li><span class="badge warn">k ověření</span><span><b>Přesnost tahu (move_accuracy)</b> má navíc člen <span class="formula" style="display:inline; padding:1px 6px; margin:0;">+ 1.0</span> oproti veřejně citovanému lichess vzorci <span class="formula" style="display:inline; padding:1px 6px; margin:0;">103,1668·e^(−0,04354·drop) − 3,1669</span>. Efekt: přesnost vychází o ~1 procentní bod výš, než by dal čistý lichess vzorec, dokud to neusekne strop 100 %. Nejde o chybu ve smyslu „špatná matematika“ — jen o odchylku od doslovného zdroje. Detaily u karty níže.</span></li>
+    <li><span class="badge heuristic">vlastní</span><span><b>„Štěstí“ (luck z-skóre)</b> počítá rozptyl jako <i>e(1−e)</i> na partii, což je přesné jen pro čistě binární výhra/prohra. U remízového výsledku (0,5) appka posouvá skóre, ale rozptyl bere jako by šlo o mincový hod — u hráčů s hodně remízami (klasika, korespondenční) to mírně <i>nadhodnotí</i> rozptyl → |z| vyjde o trochu níž, než by měl. Bezpečný směr chyby (appka je pak konzervativnější v tom, co označí za „nezvykle šťastné“), ne nebezpečný.</span></li>
+    <li><span class="badge heuristic">vlastní</span><span><b>Absolutní IPR vs. skutečné Elo</b> appka <i>záměrně</i> neukazuje jako porovnání/z-skóre — křivka <span class="formula" style="display:inline; padding:1px 6px; margin:0;">Elo ≈ 3940 − 580·ln(ACPL)</span> je kalibrovaná spíš na blitz/rapid a u bulletu hráčovu úroveň dost podhodnocuje (ověřeno na reálných datech: z = −5,9 pro hráče s 2056 Elo). Správné rozhodnutí to neukazovat — jen dokumentuju, že tahle mez existuje a je vědomá.</span></li>
+    <li><span class="badge heuristic">vlastní</span><span><b>Kompozitní index přesnosti</b> a prahy pro Brilantní/Skvělý tah/Přehlédnutí (chess.com styl) jsou appkou samou přiznané vlastní heuristiky, ne oficiální CAPS/chess.com vzorce (ty veřejně publikované nejsou) — matematicky v pořádku, jen nejsou „ověřitelné“ proti referenci.</span></li>
+  </ol>
+</div>
+
+<nav class="toc" id="toc"></nav>
+
+<div id="sections"></div>
+
+<footer>Vygenerováno z aktuálního stavu <code style="font-family:'JetBrains Mono',monospace">chess_app</code> (větev <code style="font-family:'JetBrains Mono',monospace">main</code>). „Rozsah“ = teoretický obor hodnot po zaokrouhlení/ořezání v kódu, ne jen matematický vzorec bez mezí.</footer>
+
+<script>
+const SECTIONS = [
+{title:"Přesnost tahu a partie", file:"accuracy.py", intro:"Základní vrstva – vše ostatní (kompozitní index, IPR, charakter partie) se počítá z těchto čísel.", metrics:[
+  {name:"Win % (šance na výhru)", code:"win_pct(cp)", formula:"win% = 50 + 50·(2/(1+e^(−0,00368208·cp)) − 1)", range:"0–100 %, cp oříznuto na ±1000", meaning:"Převod centipawnového hodnocení na pravděpodobnost výhry – logistická (sigmoidní) křivka, přesně lichess konstanta 0,00368208.", interpret:"50 % = vyrovnaná pozice, 100 % ⇒ jistá výhra, 0 % ⇒ jistá prohra (z pohledu strany, co je na tahu).", verdict:"ok", note:"Algebraicky identické s lichess vzorcem (2/(1+e^−kx)−1 = tanh(kx/2)). Klamping na ±1000 cp odpovídá lichess praxi (u mate skóre by extrémní cp jinak zbytečně nafukovalo/plošťovalo rozdíly)."},
+  {name:"Reálné W/D/L z enginu", code:"win_prob(cp, wdl)", formula:"win% = 100·(w + d/2) / (w+d+l)", range:"0–100 %", meaning:"Když engine (Stockfish) hlásí skutečné promile výhry/remízy/prohry (zohledňuje contempt, pravidlo 50 tahů, typ pozice), appka je použije místo sigmoidy.", interpret:"Přesnější pro praktickou hru, ale mění škálu – čísla pak nejsou 1:1 srovnatelná s lichess (tam se WDL nepoužívá).", verdict:"ok", note:"Standardní expected-score vzorec (výhra + polovina remízy). Zapíná se menu přepínačem, starší rozbory v cache zůstávají na sigmoidě, dokud se nepřepočítají – to appka sama hlásí."},
+  {name:"Přesnost tahu", code:"move_accuracy(before, after)", formula:"acc = 103,1668·e^(−0,04354·drop) − 3,1669 + 1,0", range:"0–100 %, drop = pokles win% (≥0)", meaning:"Kolik ze 100 % tah „zachránil“ – čím menší pokles šance na výhru, tím vyšší přesnost. Konstanty 103,1668 / 0,04354 / 3,1669 jsou z veřejně citovaného lichess vzorce.", interpret:"100 % = tah nezhoršil pozici vůbec. Křivka je exponenciální, ne lineární – prvních pár procent poklesu bolí málo, další rychle.", verdict:"warn", note:"Poslední <code>+1,0</code> v součtu doslovný lichess vzorec nemá (ten dá při drop=0 už ~99,9999 %, ne 101 % před ořezáním). Efekt je posun celé křivky o ~1 p.b. nahoru, dokud strop 100 % neusekne rozdíl – u typických tahů (drop 5–30) appka ukáže o cca 1 bod vyšší přesnost, než by dal čistý zdrojový vzorec. Malé, ale stojí za vědomé rozhodnutí, jestli je to záměr."},
+  {name:"Přesnost partie", code:"game_accuracy(evals)", formula:"přesnost = (váž. průměr + harmon. průměr) / 2", range:"0–100 %", meaning:"Lichess styl: kombinuje vážený průměr (váha = lokální rozptyl win% = „jak ostrá byla ta fáze partie“) s harmonickým průměrem (ten tvrdě trestá i jeden špatný tah).", interpret:"Blend dvou průměrů dělá číslo odolnější vůči tomu, že „95 % v mrtvé remíze“ vypadá stejně důvěryhodně jako „95 % v ostré partii“.", verdict:"ok", note:"Volitelný parametr <code>weights</code> umí váhu nahradit komplexitou pozice z multipv (viz „Přesnost vážená obtížností“ níže) – harmonická polovina se přitom nemění, takže číslo zůstává na stejné škále."},
+  {name:"ACPL (průměrná ztráta v cp)", code:"cp_loss / počet tahů", formula:"ACPL = Σ max(0, cp_před − cp_po) / N", range:"0–1000 (setiny pěšce)", meaning:"Klasická metrika kvality hry – o kolik centipawnů v průměru tah zhorší pozici. Nižší = lépe.", interpret:"~0–20 = velmi silná hra, ~50–90 = solidní klubová úroveň, 150+ = časté hrubé chyby. Škála je nezávislá na engine hloubce jen orientačně (hlubší rozbor = přesnější, ne nutně nižší ACPL).", verdict:"ok", note:"Cp se ořezává na ±1000 před odečtením – zabrání tomu, aby jedna pozice „−9999 → mat“ nafoukla průměr partie nesmyslně."},
+  {name:"EP ztráta (očekávané body)", code:"ep_loss", formula:"EP = Σ max(0, winbefore/100 − winafter/100)", range:"0 – počet tahů (typicky 0–5 za partii)", meaning:"Totéž co ACPL, ale v jednotkách pravděpodobnosti výhry, ne centipawnech – „kolik bodů ze hry jsi v součtu ztratil“.", interpret:"Čím blíž nule, tím míň jsi promarnil. Na rozdíl od ACPL je to citlivé i v remízových pozicích, kde velké cp výkyvy nic nemění.", verdict:"ok", note:"—"},
+  {name:"T1 % (shoda s enginem)", code:"analyze_game → t1/t1_den", formula:"T1 = 100 · (shody) / (tahy mimo knihu a bez nucených)", range:"0–100 %", meaning:"Jak často jsi zahrál přesně ten tah, co engine označil za nejlepší. Počítá se jen mimo knihu a mimo pozice s jediným legálním tahem (ty by T1 uměle nafoukly).", interpret:"Vysoké T1 u slabých hráčů bývá zavádějící – v klidných pozicích „nejlepší tah“ často splývá s několika stejně dobrými.", verdict:"ok", note:"Proto appka vedle T1 počítá Tactical Awareness (níže) – ten filtruje jen pozice, kde na volbě fakt záleželo."},
+  {name:"Tactical Awareness", code:"tact/tact_den, crit ≥ 0,15", formula:"stejné jako T1, ale jen pro tahy s kritičností ≥ 0,15", range:"0–100 %, jen s „důkladným rozborem“", meaning:"Shoda s enginem omezená na pozice, kde byl nejlepší tah jasně nejlepší (velký náskok před druhým nejlepším) – tedy tam, kde „nevidět to“ je skutečná chyba, ne jen jiná chuť.", interpret:"Nízká Tactical Awareness při vysokém T1 = hráč dobře hraje klidné pozice, ale přehlíží taktiku, když se objeví.", verdict:"ok", note:"Vyžaduje multipv (♟ „důkladný rozbor“), protože kritičnost (rozdíl 1. a 2. nejlepšího tahu) se bez top-K linií nedá spočítat."},
+  {name:"Kompozitní index přesnosti", code:"composite_index(...)", formula:"0,45·přesnost + 0,30·acplSkóre + 0,15·hrubkySkóre + 0,10·T1", range:"0–100", meaning:"Appka si sama v docstringu říká „vlastní, ne CAPS“ – jedno souhrnné číslo z přesnosti, ACPL (exponenciální skóre <code>100·e^(−ACPL/90)</code>) a hrubek na 100 tahů (<code>100·e^(−hrubky/2)</code>).", interpret:"Vyšší = celkově kvalitnější partie napříč více úhly. Váhy a exponenciální konstanty (90, 2) jsou vyladěné odhadem, ne z reálných dat – berte jako orientační souhrn, ne kalibrovaný rating.", verdict:"heuristic", note:"Matematicky konzistentní (váhy se sečtou na 1, resp. přepočítají když chybí T1) – jde jen o to vědět, že to není standard jako CAPS2 od chess.com."},
+]},
+{title:"Odhad výkonnosti (IPR)", file:"accuracy.py / accuracy_batch.py", intro:"Snaha odhadnout „jak silně jsi hrál“ z kvality tahů – ne ze skóre partií.", metrics:[
+  {name:"Hrubá křivka IPR", code:"ipr_from_acpl(acpl)", formula:"Elo ≈ 3940 − 580·ln(ACPL)", range:"400–2900, ACPL oříznuté na 3–300", meaning:"Fallback odhad, když appka nemá dost partií s Elo hlavičkou na ukotvení (viz níže). Logaritmický vztah mezi kvalitou tahů a silou.", interpret:"Orientační, appka to sama přiznává jako „spíš blitz/rapid“ – u bulletu (kde je ACPL přirozeně vyšší kvůli časovému presu) tuhle křivku podhodnocuje.", verdict:"heuristic", note:"Ověřeno na reálných datech v téhle relaci: 2056 Elo bullet hráč vyšel křivce jako z = −5,9 od svého skutečného Ela. Appka proto z-skóre vs. skutečné Elo vědomě neukazuje – správné rozhodnutí."},
+  {name:"Ukotvený IPR (per partii/skupina)", code:"_fit_ipr / _game_ipr", formula:"IPR = kotva + sklon·(ln ACPL_kotva − ln ACPL_partie)", range:"400–2900, odchylka od kotvy ±450/partii", meaning:"Místo absolutní křivky appka „ukotví“ model na tvůj průměrný Elo v rozboru a měří jen relativní odchylky podle kvality tahů. Sklon je pevný (−580) nebo se dofituje, když Elo v rozboru dost kolísá (rozptyl ≥ 30, sklon v rozumném rozsahu).", interpret:"Celkový souhrn ≈ tvoje Elo (to je z definice). Signál je v řádcích „podle barvy“, „podle období“, „poslední partie“ – tam se ukazuje forma.", verdict:"ok", note:"Rozumné řešení problému „nemám dost rozptylu Ela na regresi proti vlastním datům“. Klamping ±450 na partii brání tomu, aby jedna extrémně dobrá/špatná partie rozhodila celý odhad."},
+  {name:"Směrodatná chyba IPR", code:"ipr_se (n≥3)", formula:"SE = √(rozptyl(IPR) / n)", range:"≥0, v bodech Ela", meaning:"Standardní chyba průměru z rozptylu per-partie IPR v dané skupině (Besselova korekce, n−1 ve jmenovateli rozptylu).", interpret:"Úzký interval = odhad je pevný (hodně partií, konzistentní forma). Široký = buď málo partií, nebo hodně kolísavá hra.", verdict:"ok", note:"Textbook vzorec pro SE průměru, správně implementovaný."},
+  {name:"Test reálnosti rozdílu IPR", code:"ipr_gap_significant(a,se_a,b,se_b)", formula:"|IPR_a − IPR_b| > k·√(SE_a² + SE_b²), k=2", range:"True/False", meaning:"Je rozdíl mezi dvěma IPR odhady (např. „poslední partie“ vs. celkový průměr, nebo bílá vs. černá) reálný, nebo jen šum malého vzorku?", interpret:"k=2 je praktický práh (zhruba 95% pásmo rozdílu), ne formální p-hodnota – appka to i tak prezentuje popisně („v mezích šumu“ / „reálný posun“), ne jako tvrdý test.", verdict:"ok", note:"Standardní tvar testu rozdílu dvou nezávislých odhadů se známými chybami."},
+  {name:"Přesnost vážená obtížností", code:"adj_accuracy", formula:"game_accuracy(evals, weights=komplexita)", range:"0–100 %, jen s „důkladným rozborem“", meaning:"Stejný vzorec jako přesnost partie, ale váha tahu = komplexita pozice (rozptyl top-3 tahů enginu) místo lokálního rozptylu win%. „Mrtvé“ pozice (kde je jedno, co zahraješ) přesnost nenafouknou.", interpret:"Srovnatelnější napříč partiemi než syrová přesnost – dvě partie se stejnou přesností, ale různou „obtížností“ rozhodování, tu dostanou různé skóre.", verdict:"ok", note:"Reálně otestováno v týhle relaci: na vzorku partií vyšlo 68,8 % vážené vs. 64,4 % standardní – rozdíl v očekávaném směru a rozumné velikosti."},
+]},
+{title:"Charakter partie a pozice", file:"charakter.py", intro:"Popisné veličiny „jak partie vypadala“, ne jen jak dobře se hrálo.", metrics:[
+  {name:"Fázový index", code:"phase_value(board)", formula:"(4·dámy + 2·věže + lehké figury) / 24", range:"0,0–1,0", meaning:"Tapered-eval styl odhad fáze partie z toho, kolik materiálu (mimo pěšce/krále) zbylo na šachovnici.", interpret:">0,75 = zahájení, 0,25–0,75 = středhra, <0,25 = koncovka.", verdict:"ok", note:"24 = maximální možná váha (2 dámy·4 + 4 věže·2 + 8 lehkých figur·1 = 8+8+8=24) – konzistentní s počáteční pozicí."},
+  {name:"Volatilita", code:"volatility(evals)", formula:"průměr/medián/max |Δwin%| mezi sousedními půltahy", range:"0–100 (procentní body na půltah)", meaning:"Jak moc partie „házelo“ – velké skoky pravděpodobnosti výhry mezi tahy.", interpret:"Nízká = klidná, vyrovnaná hra. Vysoká (appka řadí >12 % jako „divokou“) = časté zvraty, buď taktická partie, nebo hodně chyb na obou stranách.", verdict:"ok", note:"—"},
+  {name:"Obraty (reversals)", code:"volatility().reversals", formula:"počet změn znaménka (win% − 50)", range:"0 – počet půltahů", meaning:"Kolikrát za partii se prohodilo, kdo stojí lépe (přechod přes 50 %).", interpret:"Víc obratů = partie se „přelévala“ tam a zpět, ne jen jedna strana pomalu rostla k výhře.", verdict:"ok", note:"Nepočítá swingy, co nepřekročí 50 % (60 %→90 %→60 % není obrat) – to je záměr, sleduje se změna toho, kdo vede, ne velikost výkyvu."},
+  {name:"Kritičnost pozice", code:"criticality(top_ep)", formula:"max(0, EP(1. nejlepší) − EP(2. nejlepší))", range:"0–1 (jednotky EP)", meaning:"O kolik je nejlepší tah lepší než druhý nejlepší – „jak moc na téhle volbě záleželo“.", interpret:"0 = víc tahů je stejně dobrých, blízko 1 = jen jeden tah drží pozici (jediná dobrá volba).", verdict:"ok", note:"Vstupuje do Tactical Awareness (práh 0,15) a do klasifikace „Skvělý tah“ (práh 0,30)."},
+  {name:"Komplexita pozice", code:"complexity(top_ep)", formula:"směrodatná odchylka top-K hodnocení (populační, ne výběrová)", range:"0–~0,5 (jednotky EP)", meaning:"Rozptyl hodnocení nejlepších tahů enginem – jak snadné bylo se seknout mezi několika kandidáty.", interpret:"Vysoká = víc různě dobrých možností, snadno zvolíš špatnou. Nízká = jasná hierarchie tahů.", verdict:"ok", note:"Používá se i jako váha pro „přesnost váženou obtížností“ výše – konzistentní použití napříč appkou."},
+  {name:"Ostrost pozice", code:"sharpness(top_ep, n_legal)", formula:"1 − (počet tahů „skoro stejně dobrých“) / min(K, legálních tahů)", range:"0–1", meaning:"0 = skoro každý legální tah drží pozici, →1 = drží jen jediná cesta (úzká, ostrá pozice).", interpret:"Komplementární pohled ke komplexitě – komplexita měří rozptyl hodnot, ostrost měří kolik tahů je „v pořádku“ vs. kolik jich pozici zkazí.", verdict:"ok", note:"—"},
+  {name:"Kritičností vážený ACPL", code:"cwl_num / cwl_den", formula:"Σ(cp_ztráta·kritičnost) / Σ(kritičnost)", range:"0–1000 (setiny pěšce)", meaning:"Stejná jednotka jako ACPL, ale chyby v lhostejných pozicích (nízká kritičnost) váží málo, chyby v pozicích „kde na tahu fakt záleželo“ váží hodně.", interpret:"Bývá výrazně nižší než syrový ACPL – ukazuje, kolik z tvé „ztráty“ padá na situace, kde to reálně bolelo, ne na kosmetické nepřesnosti v už rozhodnutých pozicích.", verdict:"ok", note:"Přímý analog „přesnosti vážené obtížností“, jen v cp škále místo %."},
+]},
+{title:"Dotahování a záchrany", file:"charakter.py", intro:"Umí hráč proměnit výhodu ve výhru, a zachránit nevýhodu?", metrics:[
+  {name:"„Měl vyhráno“ / „měl prohráno“", code:"_has_run(ep, práh, need=3)", formula:"3 po sobě jdoucí půltahy s EP ≥0,75 (resp. ≤0,25)", range:"true/false", meaning:"Aby jeden náhodný výkyv hodnocení nezpůsobil falešné „měl jsi vyhráno“, appka vyžaduje sérii aspoň 3 tahů v řadě nad/pod prahem.", interpret:"Robustnější než kontrola jen finálního nebo jen špičkového hodnocení.", verdict:"ok", note:"Poslední půltah (dohra) se z těla sekvence vynechává, aby ho nezkreslilo už rozhodnuté finále."},
+  {name:"Conversion rate (dotahování)", code:"conversion", formula:"100 · (partie s výhrou po „měl vyhráno“) / (partie kde „měl vyhráno“)", range:"0–100 %", meaning:"Z partií, kde jsi měl jasně vyhranou pozici, kolik jsi jich skutečně vyhrál.", interpret:"Nízké číslo = často „prošustruješ“ vyhrané pozice – cenný signál pro trénink.", verdict:"ok", note:"—"},
+  {name:"Resourcefulness (záchrany)", code:"resourcefulness", formula:"100 · (partie bez prohry po „měl prohráno“) / (partie kde „měl prohráno“)", range:"0–100 %", meaning:"Symetrická metrika k dotahování – z prohraných pozic, kolik se jich zachránilo (remíza nebo obrat).", interpret:"Vysoké = houževnatost v horších pozicích.", verdict:"ok", note:"—"},
+  {name:"Ztracené body (ep_wasted)", code:"ep_wasted = peak_ep − skóre", formula:"jen když „měl vyhráno“ a výsledek je znám", range:"0–1 (jednotky skóre)", meaning:"Kolik bodů z dosaženého vrcholu (peak EP) partie ve výsledku ztratila – 1,0 = z jisté výhry (EP=1) skončila prohrou (skóre=0).", interpret:"Průměr přes partie ukazuje typickou „daň“ za neschopnost uzavřít vyhranou pozici.", verdict:"ok", note:"Ořezáno na ≥0 (max s nulou) – zlepšení oproti vrcholu se nepočítá záporně."},
+]},
+{title:"Klasifikace tahů (styl chess.com)", file:"move_class.py", intro:"Alternativa k lichess ??/?/?! – appka počítá obojí a jen přepíná zobrazení.", metrics:[
+  {name:"Základní žebříček (Nejlepší…Hrubka)", code:"CCOM_BEST…CCOM_MIST", formula:"0 / ≤0,02 / ≤0,05 / ≤0,10 / ≤0,20 / jinak (EP jednotky)", range:"6 kategorií", meaning:"Prahy ztráty v očekávaných bodech přímo z chess.com veřejného FAQ (0 / 2 / 5 / 10 / 20 procentních bodů).", interpret:"Na rozdíl od lichess stylu appka značí i „dobré“ tahy (chess.com dělá totéž), ne jen chyby – hustší, ale věrnější vizuálnímu stylu chess.com.", verdict:"ok", note:"Prahy odpovídají doslovně publikovaným hodnotám."},
+  {name:"Skvělý tah (Great Move)", code:"crit ≥ GREAT_CRIT (0,30)", formula:"kritičnost ≥ 0,30 a hráč trefil top tah", range:"binární značka", meaning:"Vlastní heuristika appky (chess.com práh nezveřejňuje) – vyšší práh než Tactical Awareness (0,15), tedy „opravdu jediná rozumná cesta“.", interpret:"Bez multipv (♟ „důkladný rozbor“) se nikdy neobjeví – kritičnost se bez top-K linií nedá spočítat.", verdict:"heuristic", note:"Appka to sama v docstringu přiznává jako vlastní přiblížení, ne oficiální číslo."},
+  {name:"Přehlédnutí (Miss)", code:"MISS_OPP_DROP = 0,10", formula:"soupeřův předchozí tah ztratil ≥0,10 EP a hráčův tah je pořád chyba/hrubka", range:"binární značka", meaning:"Soupeř nabídl příležitost (sám chyboval) a hráč na ni nezareagoval o nic líp.", interpret:"Vlastní heuristika, logicky konzistentní s chess.com popisem („missed opportunity“).", verdict:"heuristic", note:"—"},
+  {name:"Brilantní tah", code:"_hanging_value + čisté ztráty ≥2", formula:"obětovaná figura viselá skutečně LEGÁLNĚ (ne jen geometricky), pozice předtím nebyla už ≥92 % vyhraná, po tahu je aspoň 45 %", range:"binární značka", meaning:"Hráč obětoval materiál (soupeř ho může vzít levněji nebo bez obránce) ve zdravé pozici.", interpret:"Vlastní heuristika appky. Zajímavý detail: `_hanging_value` počítá jen se skutečně legálními braními (`board.legal_moves`), ne geometrickým `attackers()` – to byla v této relaci dřív opravená chyba (král „viděl“ braní, co by ho vystavilo odkrytému šachu, tedy ve skutečnosti nelegální).", verdict:"heuristic", note:"Po opravě validováno na reálných datech: ~1 brilantní tah na 7 partií – věrohodná četnost (extrémně vzácný jev, ne skoro nikdy, ne moc často)."},
+]},
+{title:"Obecné statistické nástroje", file:"stats_util.py", intro:"Nezávislé na šachu – používají se všude, kde appka ukazuje winrate/úspěšnost.", metrics:[
+  {name:"Wilsonův interval spolehlivosti", code:"wilson_interval(k,n)", formula:"standardní Wilson score interval, z=1,96 (95 %)", range:"(lo, hi) ⊂ [0,1]", meaning:"Interval spolehlivosti pro podíl k/n, který se (na rozdíl od normální aproximace) chová rozumně i u malých n nebo p blízko 0/1.", interpret:"Široký interval u pár partií = nedůvěřuj číslu. Úzký u stovek partií = spolehlivé.", verdict:"ok", note:"Vzorec odpovídá term po termu standardní Wilson score formuli."},
+  {name:"Empirical-Bayes shrinkage (síla m)", code:"estimate_shrink_m(buckets)", formula:"DerSimonian–Laird τ² odhad; m = p₀(1−p₀)/τ² − 1, ořez [2,200]", range:"2–200 (pseudopočet partií)", meaning:"Random-effects odhad, jak moc se od sebe koše (zahájení, kategorie koncovek…) skutečně liší, vážený počtem partií v koši, aby jeden šumivý malý koš nerozhodl sílu pro všechny ostatní.", interpret:"Malý skutečný rozptyl mezi koši → velké m (košům se nevěří, stáhnou se blízko průměru). Velký rozptyl → malé m (košům se věří).", verdict:"ok", note:"Korektní implementace standardního DL odhadu τ² z meta-analytické literatury (Q statistika, C = Σw − Σw²/Σw)."},
+  {name:"Stažený odhad (shrinkage)", code:"shrink_rate(k,n,p0,m)", formula:"(k + m·p0) / (n + m)", range:"0–1", meaning:"Bayesovské stažení podílu k/n směrem k celkovému průměru p0, silou m „virtuálních“ partií.", interpret:"Malý vzorek (100 % ze 3 partií) se stáhne blízko průměru; velký vzorek zůstane skoro nezměněný.", verdict:"ok", note:"Standardní Beta-Binomial shrinkage vzorec."},
+  {name:"Dvouvýběrový test podílů", code:"two_prop_p(k1,n1,k2,n2)", formula:"poolovaný z-test, p = 2·(1−Φ(|z|))", range:"p-hodnota 0–1", meaning:"Liší se dva podíly (např. koš vs. zbytek souboru) statisticky významně?", interpret:"Nízké p = rozdíl pravděpodobně není náhoda. Používá se v kombinaci s Benjamini–Hochbergem, ne samo o sobě.", verdict:"ok", note:"—"},
+  {name:"Jednovýběrový test podílů", code:"one_prop_p(k,n,p0)", formula:"z = (k/n − p0)/√(p0(1−p0)/n)", range:"p-hodnota 0–1", meaning:"Liší se podíl k/n od ZNÁMÉ referenční hodnoty p0 (populace z Opening Exploreru) – populace se bere jako pevná, protože její vzorek je o řády větší.", interpret:"Použité pro porovnání zahájení a koncovek s populací.", verdict:"warn", note:"Aproximace „p0 je pevné“ je výborná, když je populační vzorek opravdu obří – appka ale pouští i buckety s jen 50 partiemi (`MIN_POP_GAMES`), kde populace sama nese ±~7 p.b. nejistotu při 50/50 rozdělení. Pro buckety těsně nad prahem se tak celková nejistota mírně podhodnotí. Drobné, ale stojí za zaznamenání."},
+  {name:"Benjamini–Hochberg (FDR)", code:"bh_reject(pvals, alpha=0,05)", formula:"najdi max. pořadí r kde p₍r₎ ≤ α·r/m, zamítni 1..r", range:"seznam True/False", meaning:"Korekce na mnohonásobné testování – když appka testuje desítky košů (zahájení, koncovky) najednou, čistý práh p<0,05 by dal spoustu falešných poplachů.", interpret:"Kontroluje očekávaný podíl falešných zásahů mezi vším, co appka označí ▲/▼, ne pravděpodobnost jednotlivé chyby.", verdict:"ok", note:"Standardní BH procedura, správně implementovaná (largest-rank test)."},
+  {name:"Efektní práh (min. věcný rozdíl)", code:"winrate_outliers(min_effect=0,025)", formula:"odznač, když |wr − p0| < min_effect i po BH", range:"2,5 p.b. (nebo 5 p.b. u Opening Exploreru)", meaning:"Zabrání tomu, aby u obřích vzorků appka označila triviální rozdíl (0,3 procentního bodu) jen proto, že je statisticky „významný“.", interpret:"Kombinace statistické významnosti + věcné velikosti je osvědčená praxe – čistá p-hodnota bez efekt-size filtru je u velkých vzorků zavádějící.", verdict:"ok", note:"—"},
+  {name:"„Štěstí“ (luck z-skóre)", code:"luck_z(pairs)", formula:"z = (skutečné skóre − Elo-očekávané) / √Σe(1−e)", range:"neomezené (typicky −4…+4)", meaning:"Kolik směrodatných odchylek se tvůj skutečný součet skóre liší od toho, co by čekal rozdíl v Elu soupeřů.", interpret:"Blízko 0 = výkon odpovídá síle soupeřů. Vysoké |z| = neobvykle šťastná/nešťastná série (nebo reálná změna formy, statistika to samo nerozliší).", verdict:"warn", note:"Rozptyl e(1−e) je přesný pro čistě binární výhra/prohra; u remízových výsledků (skóre 0,5) appka posune čitatel správně, ale jmenovatel (rozptyl) mírně nadhodnotí u hráčů s hodně remízami → |z| vyjde konzervativněji nízké. Bezpečný směr (appka pak spíš podhodnotí „štěstí“ než ho vidí tam, kde není), ne nebezpečný."},
+  {name:"Elo-adjusted výkonnost", code:"context_stats → elo_surplus", formula:"průměr(skutečné skóre − Elo-očekávané skóre)", range:"−1…+1 (bodů na partii)", meaning:"Silnější signál než syrová úspěšnost, protože odfiltruje efekt „vyhrávám hlavně proti slabším soupeřům“.", interpret:"Kladné = hraješ nad očekávání dané síly soupeřů, záporné = pod.", verdict:"ok", note:"Standardní Elo expected-score <code>1/(1+10^(−Δ/400))</code>, korektní implementace."},
+  {name:"Kaplan–Meierův medián", code:"kaplan_meier(records)", formula:"product-limit odhad přežití, medián = první t kde S(t)≤0,5", range:"tah (celé číslo) nebo None", meaning:"Medián vstupu do koncovky s partiemi, co skončily dřív BEZ dosažení koncovky, počítanými korektně jako cenzurovaná data (aspoň tolik tahů partie vydržela), ne jako by koncovky nikdy nedošly.", interpret:"Robustnější než prostý průměr, který by cenzurovaná pozorování musel buď vyhodit (zkreslí nahoru), nebo mylně léčit jako přesnou hodnotu.", verdict:"ok", note:"Korektní product-limit estimátor – at_risk a events se počítají přesně podle Kaplan–Meierovy definice."},
+]},
+{title:"Zahájení", file:"openings.py / player_analysis.py / opening_explorer.py", intro:"Repertoár, hloubka teorie a srovnání s populací lichess.", metrics:[
+  {name:"Diverzita repertoáru", code:"_diversity(counts)", formula:"Shannonova entropie H, n_eff = 1/HHI, entropy_norm = H/log₂(n)", range:"n_eff ≥1, entropy_norm 0–1", meaning:"„Efektivní počet zahájení“ – standardní míra diverzity (inverzní Herfindahl–Hirschmanův index, běžná i mimo šachy v ekologii/ekonomii).", interpret:"n_eff=1 → hraješ jen jedno zahájení. n_eff=n → všechna zahájení stejně často. entropy_norm 0 = jedno zahájení dominuje, 1 = rovnoměrné rozdělení.", verdict:"ok", note:"—"},
+  {name:"Hloubka teorie (vlastní historie)", code:"personal_book_depth", formula:"první půltah, kde pozice nikde jinde v databázi hráče nenastala (frekvence < 2)", range:"počet tahů", meaning:"Bez externí databáze – jen z toho, kdy hráč poprvé opustí pozici, kterou hrál i jinde. Transpozičně korektní (klíč pozice, ne pořadí tahů).", interpret:"Porovnání s „jmenovanou“ hloubkou (z eco.tsv) ukazuje, jestli hráč jde za katalogizovanou teorii (vlastní příprava), nebo naopak i knižní tahy nemá zažité.", verdict:"ok", note:"—"},
+  {name:"Predikované skóre ve stromu zahájení", code:"TreeNode.predicted_score", formula:"list: shrink_rate k p0; jinak partiemi vážený průměr dětí", range:"0–1", meaning:"Empirický Markovův řetězec přes strom pozic – uzly s málo daty dostanou stažený odhad, uzly s dětmi dostanou vážený průměr predikcí potomků (rekurzivně).", interpret:"Robustnější než syrové skóre uzlu u řídce navštívených pozic hluboko ve stromu.", verdict:"ok", note:"Rekurze je korektní – váha je počet partií dítěte, ne rovnoměrný průměr (uzel s 50 partiemi váží víc než uzel se 2)."},
+  {name:"Porovnání s populací (Opening Explorer)", code:"opening_explorer.build_tasks + one_prop_p", formula:"Δ = tvá úspěšnost − úspěšnost populace ze SHODNÉ pozice", range:"Δ v procentních bodech, p-hodnota", meaning:"Tvoje úspěšnost se počítá jen z partií, co prošly stejnou (modální) reprezentativní pozicí jako dotaz na populaci – „like-for-like“, ne úspěšnost přes celou pojmenovanou variantu vs. jedna konkrétní pozice.", interpret:"▲/▼ = po BH korekci a s věcným rozdílem ≥5 p.b. se lišíš od populace ve srovnatelném Elo pásmu/tempu.", verdict:"ok", note:"Design rozhodnutí „stejná pozice, ne celá varianta“ je správné – jinak by šlo o srovnání dvou různých věcí."},
+]},
+{title:"Koncovky", file:"endgames.py / endgame_dump.py", intro:"Kategorizace + populační srovnání z měsíčního lichess dumpu.", metrics:[
+  {name:"Definice koncovky", code:"_table_ok / is_endgame", formula:"Speelman: obě strany ≤13 b. (D9,V5,S/J3,P1) NEBO Minev: ≤4 figury mimo krále/pěšce; rozdíl materiálu ≤4 (mimo pěšcovky)", range:"true/false", meaning:"Dvě klasické praktické definice koncovky (kombinované přes NEBO), plus appkou vlastní pravidlo „rozdíl ≤4 body, výjimkou pěšcovky“, co appka sama v UI vysvětluje.", interpret:"Konzervativní – radši nezahrne hraniční případ (velký materiálový rozdíl), než aby zahrnula pozice, co jsou fakticky rozhodnuté, ne koncovkové technikou.", verdict:"ok", note:"Rozdíl ≤4 body je appkou zvolený práh, ne teoretický standard – transparentně vysvětlený v UI hintu, ne skrytý."},
+  {name:"Kategorie koncovky", code:"position_category(board)", formula:"typ podle druhů figur + přesný soupis (silnější strana první)", range:"~30 pojmenovaných kategorií", meaning:"Např. „Věžová koncovka: V vs 2V“ – stejné složení figur vždy dá stejnou kategorii bez ohledu na barvu hráče.", interpret:"Umožňuje srovnávat „jak mi jde věžovka“ napříč partiemi, kde jsi jednou měl navrch, jednou byl v defenzivě.", verdict:"ok", note:"—"},
+  {name:"Populační remízovost (vyrovnaný materiál)", code:"endgame_dump: bal_draw/bal_n", formula:"remíz % mezi partiemi, co do kategorie vstoupily s Δmateriál=0", range:"0–100 %", meaning:"Z měsíčního dumpu: jak často se daná koncovka při vyrovnaném materiálu skutečně remízuje ve zvoleném Elo pásmu/tempu.", interpret:"Vysoká = „teoretická remíza“ se v praxi drží (typicky vzácnější u nižších Elo pásem). Nízká = i vyrovnaná pozice se často rozhodne (technika obou stran je nedokonalá).", verdict:"ok", note:"Zápis do počítadel probíhá při PRVNÍM vstupu partie do kategorie – partie se nezapočítá vícekrát, i když do kategorie vstoupí a vystoupí víckrát."},
+  {name:"Konverze materiální výhody", code:"endgame_dump: edge[\"1\"|\"2\"|\"3+\"]", formula:"100 · (výhry silnější strany) / (partie se vstupním rozdílem N)", range:"0–100 %, koše +1/+2/+3 a víc pěšce", meaning:"Jak často materiálově napřed stojící strana danou výhodu skutečně dotáhne k výhře.", interpret:"Roste s velikostí výhody (logicky) a s Elo pásmem (dvojklik na kategorii ukáže rozpad podle Ela – appka to i takhle explicitně nabízí).", verdict:"ok", note:"Koš „3+“ je záměrně široký (od Δ=3 po jakkoli velký pěšcový přebytek u pěšcovek, kde appka žádný horní limit nemá) – míchá „jasně vyhrané“ s „drtivě vyhrané“. Rozumný kompromis kvůli velikosti vzorku v koších, jen dobré vědět, že koš není homogenní."},
+]},
+{title:"Detekce anomálií", file:"anomaly.py", intro:"Které partie jsou vzhledem k tvému běžnému stylu nejvíc „jiné“ – ne nejlepší/nejhorší, ale nejneobvyklejší.", metrics:[
+  {name:"Předfiltr „zajímavé partie“", code:"_interesting(f)", formula:"|ΔElo|≤350, materiál ≤6 (oříznuto), ≥12 tahů, dohráno", range:"true/false", meaning:"Vyřadí partie, co nemohly být napínavé – masakr proti slabšímu soupeři, miniaturky, nedohrané. Appka to přidala na výslovnou žádost uživatele.", interpret:"Bez tohohle filtru by anomálie byly dominované triviálním „měl jsem drtivou materiální převahu“, což není zajímavé ke studiu.", verdict:"ok", note:"—"},
+  {name:"Van der Waerdenova transformace", code:"_normal_scores(col)", formula:"pořadí hodnoty → normální kvantil průměrného pořadí / (n+1)", range:"~N(0,1) po sloupci", meaning:"Každý sloupec (24 vlastností partie) se převede na přibližně normální rozdělení bez ohledu na původní tvar – řeší šikmé počty (délka partie) i vzácné binární příznaky (IQP), co by jinak Σ⁻¹ nechtěně přefoukly.", interpret:"Robustnost kroku, ne interpretovatelná hodnota sama o sobě – je to mezikrok pipeline.", verdict:"ok", note:"Přesně tohle bylo v této relaci nutné doladit – bez transformace numerika explodovala (d²=6,7×10¹⁸ na vzácném binárním příznaku), po transformaci stabilní."},
+  {name:"Mahalanobisova vzdálenost d²", code:"zᵀΣ⁻¹z, Σ se shrinkage α=0,25", formula:"kovariance z 90 % nejméně odlehlých partií (reweighting), přeškálováno na medián χ²(d)", range:"≥0, teoreticky ~χ²(d)", meaning:"Mnohorozměrná vzdálenost partie od „typické“ partie hráče přes všechny vlastnosti najednou (ne jen jednu odchylku).", interpret:"Vysoké d² = partie je neobvyklá v kombinaci vlastností, i kdyby žádná jednotlivá vlastnost nebyla extrémní sama o sobě.", verdict:"ok", note:"Reweighting (přepočet Σ jen z 90 % „normálních“ partií) je standardní robustní trik – zabrání tomu, aby samotné odlehlé partie nafoukly odhad rozptylu a schovaly se tak samy před sebou."},
+  {name:"„Divnost“ %", code:"_chi2_percentile(d2, d)", formula:"Wilsonova–Hilfertyho aproximace χ²(d) + normální CDF", range:"0–100 %", meaning:"Percentil Mahalanobisovy vzdálenosti přes teoretické χ²(d) rozdělení – převádí syrové d² na intuitivnější „je divnější než X % partií“.", interpret:"Blízko 100 % = mezi nejneobvyklejšími partiemi v databázi podle kombinace všech sledovaných vlastností.", verdict:"ok", note:"Standardní aproximace, správně implementovaná."},
+]},
+];
+
+function renderFormula(f){ return f ? `<div class="formula">${f}</div>` : ""; }
+function badgeLabel(v){ return v==="ok" ? "sedí" : v==="warn" ? "k ověření" : "vlastní heuristika"; }
+
+const tocEl = document.getElementById('toc');
+const root = document.getElementById('sections');
+SECTIONS.forEach((sec, si) => {
+  const secId = `sec-${si}`;
+  tocEl.insertAdjacentHTML('beforeend', `<a href="#${secId}"><span class="num">${String(si+1).padStart(2,'0')}</span>${sec.title}</a>`);
+
+  const metricsHtml = sec.metrics.map(m => `
+    <div class="metric">
+      <div class="metric-head">
+        <div>
+          <span class="metric-name">${m.name}</span>
+          <div class="metric-code">${m.code}</div>
+        </div>
+        <span class="badge ${m.verdict}">${badgeLabel(m.verdict)}</span>
+      </div>
+      ${renderFormula(m.formula)}
+      <dl class="field-grid">
+        <dt>Rozsah</dt><dd class="range">${m.range}</dd>
+        <dt>Význam</dt><dd>${m.meaning}</dd>
+        <dt>Interpretace</dt><dd>${m.interpret}</dd>
+      </dl>
+      ${m.note && m.note !== "—" ? `<div class="note">${m.note}</div>` : ""}
+    </div>`).join("");
+
+  root.insertAdjacentHTML('beforeend', `
+    <section class="group" id="${secId}">
+      <div class="group-head">
+        <span class="group-num">${String(si+1).padStart(2,'0')}</span>
+        <h2 class="group-title">${sec.title}</h2>
+      </div>
+      <p class="group-intro"><code style="font-family:'JetBrains Mono',monospace">${sec.file}</code> — ${sec.intro}</p>
+      ${metricsHtml}
+    </section>`);
+});
+</script>

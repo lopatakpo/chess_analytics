@@ -21,7 +21,7 @@ import chess
 from PySide6.QtCore import QThread, Signal
 
 from net_util import open_url
-from stats_util import bh_reject, one_prop_p
+from stats_util import bh_reject, one_score_p
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _CACHE_PATH = os.path.join(_DIR, "opening_explorer_cache.json.gz")
@@ -164,19 +164,20 @@ class ExplorerWorker(QThread):
             if not pop or pop.get("total", 0) < MIN_POP_GAMES:
                 continue
             res = t["results"]
-            w = res.count("win")
-            n = w + res.count("draw") + res.count("loss")
+            w, d, l = res.count("win"), res.count("draw"), res.count("loss")
+            n = w + d + l
             if n < 1:
                 continue
-            wr_player = w / n
+            # skóre (remíza = půl bodu), ne holý podíl výher – na obou stranách
+            wr_player = (w + 0.5 * d) / n
             side_wins = pop["white"] if t["is_white"] else pop["black"]
-            wr_pop = side_wins / pop["total"]
+            wr_pop = (side_wins + 0.5 * pop["draws"]) / pop["total"]
             rows.append({
                 "name": t["name"], "fen": t["fen"], "is_white": t["is_white"],
                 "n_player": n, "wr_player": wr_player,
                 "n_pop": pop["total"], "wr_pop": wr_pop,
                 "delta": wr_player - wr_pop,
-                "p": one_prop_p(w, n, wr_pop),
+                "p": one_score_p(w, d, l, wr_pop),
                 "n_repr": t.get("n_repr"), "n_total": t.get("n_total"),
                 "pop_name": pop.get("opening"),
             })

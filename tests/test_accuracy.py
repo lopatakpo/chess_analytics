@@ -45,8 +45,10 @@ def test_win_series_s_wdl():
 
 
 def test_move_accuracy_bez_poklesu_je_sto():
-    assert move_accuracy(60.0, 60.0) == pytest.approx(100.0, abs=1e-6)
-    assert move_accuracy(60.0, 70.0) == pytest.approx(100.0, abs=1e-6)  # zlepšení
+    # doslovný lichess vzorec dá při drop=0 99,9999…, ne rovných 100 –
+    # zaokrouhleno na zobrazovanou desetinu je to k nerozeznání od 100 %
+    assert move_accuracy(60.0, 60.0) == pytest.approx(100.0, abs=1e-3)
+    assert move_accuracy(60.0, 70.0) == pytest.approx(100.0, abs=1e-3)  # zlepšení
 
 
 def test_move_accuracy_klesa_s_poklesem_win_pct():
@@ -81,7 +83,7 @@ def test_per_move_dobra_pozice_ztrata_nula():
     mv = per_move([0, 0])
     assert mv[0]["cp_loss"] == 0
     assert mv[0]["win_drop"] == pytest.approx(0.0)
-    assert mv[0]["acc"] == pytest.approx(100.0, abs=1e-6)
+    assert mv[0]["acc"] == pytest.approx(100.0, abs=1e-3)
 
 
 def test_game_accuracy_perfektni_partie():

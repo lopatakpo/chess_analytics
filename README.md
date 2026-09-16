@@ -299,8 +299,8 @@ partie vybraného hráče v databázi pokračovaly (včetně transpozic). U kaž
 tahu je:
 
 - **počet partií**, které tudy prošly,
-- **úspěšnost** = výhry ÷ rozhodnuté partie z pohledu hráče (remízy se do čitatele
-  nepočítají), obarvené od červené (0 %) přes žlutou po zelenou (100 %),
+- **úspěšnost** = skóre z pohledu hráče (výhra 1 bod, remíza půl bodu, prohra
+  0, ÷ rozhodnuté partie), obarvené od červené (0 %) přes žlutou po zelenou (100 %),
 - **Výsledek V/R/P** jako skládaný pruh s podílem výher (zelená), remíz (šedá) a
   proher (červená); přesná čísla ukáže tooltip,
 - podíl na pozici rodiče.
@@ -328,7 +328,7 @@ Kombinací voleb jde srovnat třeba „kam stavím jezdce ve výhrách vs prohr�
 
 Partie vybraného hráče (vlastní přepínač **jako bílý / jako černý / obě barvy**)
 rozdělené podle řady kritérií; u každého koše je počet partií, **úspěšnost**
-(výhry ÷ rozhodnuté, remízy se do čitatele nepočítají) a pruh **V / R / P**.
+(skóre: výhra 1 bod, remíza půl bodu, prohra 0, ÷ rozhodnuté) a pruh **V / R / P**.
 Rozbor se spustí až tlačítkem, platí filtr databáze. Skupiny:
 
 - **Rošáda** – strana rošády hráče (O-O / O-O-O / bez), vzájemný vztah rošád

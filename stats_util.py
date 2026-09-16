@@ -42,6 +42,58 @@ def one_prop_p(k: int, n: int, p0: float) -> float | None:
     return max(0.0, min(1.0, 2.0 * (1.0 - norm_cdf(abs(z)))))
 
 
+def score_pct(w: int, d: int, l: int) -> float | None:
+    """Skóre (výhra=1, remíza=0,5, prohra=0) jako podíl – standardní turnajové
+    skóre. Na rozdíl od holého podílu výher (`w/(w+d+l)`) dá remíze polovinu
+    bodu místo nuly, takže dva soubory se stejným poměrem výher, ale různou
+    remízovostí, nevyjdou stejně (jak by u čistého „podílu výher“ mohly)."""
+    n = w + d + l
+    return (w + 0.5 * d) / n if n else None
+
+
+def _score_var(w: int, d: int, n: int) -> float:
+    """Rozptyl skóre (hodnoty 0 / 0,5 / 1) z pozorovaných četností –
+    TRINOMICKÉ rozdělení výhra/remíza/prohra, ne binomické výhra/ne-výhra:
+    Var(X) = E[X²] − E[X]² s E[X²] = (w·1 + d·0,25)/n. U remízového souboru
+    vyjde nižší rozptyl než by dal naivní `p(1−p)` (binomický) odhad při
+    stejném průměrném skóre p – draws snižují rozptyl výsledku, a testy níže
+    to musí vědět, jinak by byly zbytečně konzervativní."""
+    if n <= 0:
+        return 0.0
+    p = (w + 0.5 * d) / n
+    ex2 = (w + 0.25 * d) / n
+    return max(0.0, ex2 - p * p)
+
+
+def two_score_p(w1: int, d1: int, l1: int, w2: int, d2: int, l2: int) -> float | None:
+    """Jako :func:`two_prop_p`, ale se skóre (remíza = půl bodu) místo čistého
+    podílu výher, a s rozptylem z trinomického rozdělení (viz `_score_var`)."""
+    n1, n2 = w1 + d1 + l1, w2 + d2 + l2
+    if n1 <= 0 or n2 <= 0:
+        return None
+    p1, p2 = (w1 + 0.5 * d1) / n1, (w2 + 0.5 * d2) / n2
+    se = math.sqrt(_score_var(w1, d1, n1) / n1 + _score_var(w2, d2, n2) / n2)
+    if se == 0.0:
+        return 1.0 if abs(p1 - p2) < 1e-12 else 0.0
+    z = (p1 - p2) / se
+    return max(0.0, min(1.0, 2.0 * (1.0 - norm_cdf(abs(z)))))
+
+
+def one_score_p(w: int, d: int, l: int, p0: float) -> float | None:
+    """Jako :func:`one_prop_p`, ale se skóre (remíza = půl bodu) proti známé
+    referenci ``p0`` (např. skóre populace z Opening Exploreru, brané jako
+    pevné – její vzorek je o řády větší)."""
+    n = w + d + l
+    if n <= 0 or not (0.0 < p0 < 1.0):
+        return None
+    se = math.sqrt(_score_var(w, d, n) / n)
+    p = (w + 0.5 * d) / n
+    if se == 0.0:
+        return 1.0 if abs(p - p0) < 1e-12 else 0.0
+    z = (p - p0) / se
+    return max(0.0, min(1.0, 2.0 * (1.0 - norm_cdf(abs(z)))))
+
+
 def bh_reject(pvals: list, alpha: float = 0.05) -> list[bool]:
     """Benjamini–Hochberg (kontrola FDR): pro každou p-hodnotu vrátí True, když
     se zamítá H0 při FDR ``alpha``. ``None`` p-hodnoty → False."""
@@ -76,6 +128,29 @@ def winrate_outliers(buckets: list, w0: int, n0: int, alpha: float = 0.05,
     flags = bh_reject(pvals, alpha)
     for i, (w, n) in enumerate(buckets):
         if flags[i] and n > 0 and abs(w / n - p0) < min_effect:
+            flags[i] = False
+    return flags, pvals
+
+
+def score_outliers(buckets: list, w0: int, d0: int, l0: int, alpha: float = 0.05,
+                   min_effect: float = 0.025):
+    """Jako :func:`winrate_outliers`, ale se **skóre** (remíza = půl bodu),
+    stejně jako :func:`score_pct`/:func:`two_score_p`. ``buckets`` =
+    [(výhry, remízy, prohry), …]; test proti zbytku souboru + Benjamini–
+    Hochberg + věcný práh ``min_effect`` od celkového skóre.
+    Vrátí (flags: list[bool], pvals: list[float|None])."""
+    n0 = w0 + d0 + l0
+    p0 = (w0 + 0.5 * d0) / n0 if n0 else 0.5
+    pvals = []
+    for w, d, l in buckets:
+        n = w + d + l
+        rw, rd, rl = w0 - w, d0 - d, l0 - l
+        rn = rw + rd + rl
+        pvals.append(two_score_p(w, d, l, rw, rd, rl) if (n >= 1 and rn >= 1) else None)
+    flags = bh_reject(pvals, alpha)
+    for i, (w, d, l) in enumerate(buckets):
+        n = w + d + l
+        if flags[i] and n > 0 and abs((w + 0.5 * d) / n - p0) < min_effect:
             flags[i] = False
     return flags, pvals
 

@@ -111,7 +111,7 @@ def test_worker_assembles_rows(monkeypatch, _no_disk):
     assert len(rows) == 1
     r = rows[0]
     assert r["n_pop"] == 10000
-    assert r["wr_pop"] == pytest.approx(0.4)          # white 4000/10000
+    assert r["wr_pop"] == pytest.approx(0.45)          # (4000 + 0.5*1000)/10000, skóre s remízou
     assert 0.0 <= r["wr_player"] <= 1.0
     assert r["p"] is not None
     assert "sig" in r

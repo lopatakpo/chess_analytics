@@ -118,9 +118,9 @@ from stats_util import (
     elo_expected_from_delta,
     estimate_shrink_m,
     kaplan_meier,
+    score_outliers,
     shrink_rate,
     wilson_interval,
-    winrate_outliers,
 )
 import report_charts
 from anomaly import detect_anomalies
@@ -299,11 +299,13 @@ _LOSS_COLOR = QColor("#c9524f")
 
 
 def _winrate(results) -> float | None:
+    """Skóre (výhra=1, remíza=0,5, prohra=0) – standardní turnajové skóre,
+    ne holý podíl výher. Viz :func:`stats_util.score_pct`."""
     w = results.count("win")
     d = results.count("draw")
     lo = results.count("loss")
     n = w + d + lo
-    return w / n if n else None
+    return (w + 0.5 * d) / n if n else None
 
 
 def _stat_item(label: str, results: list, name_key=None,
@@ -311,10 +313,12 @@ def _stat_item(label: str, results: list, name_key=None,
                sig: tuple | None = None) -> SortableItem:
     """Řádek: název | počet partií | úspěšnost % | pruh V/R/P; s klíči pro řazení.
 
-    ``p0``/``shrink_m`` (viz :func:`_report_prior`) → tooltip u úspěšnosti ukáže
-    Wilsonův interval a stažený (empirical-Bayes) odhad. ``sig`` = ``(p, True)``
-    z :func:`stats_util.winrate_outliers` → úspěšnost se zvýrazní (▲/▼, tučně),
-    pokud se koš po Benjamini–Hochberg korekci významně liší od tvého celku.
+    Úspěšnost = **skóre** (výhra=1, remíza=0,5, prohra=0), ne holý podíl výher
+    – viz :func:`_winrate`. ``p0``/``shrink_m`` (viz :func:`_report_prior`) →
+    tooltip u úspěšnosti ukáže Wilsonův interval a stažený (empirical-Bayes)
+    odhad. ``sig`` = ``(p, True)`` z :func:`stats_util.score_outliers` →
+    úspěšnost se zvýrazní (▲/▼, tučně), pokud se koš po Benjamini–Hochberg
+    korekci významně liší od tvého celku.
     """
     w = results.count("win")
     d = results.count("draw")
@@ -343,11 +347,11 @@ def _stat_item(label: str, results: list, name_key=None,
         f2.setBold(True)
         it.setFont(2, f2)
     if wr is not None and decided > 0:
-        ci = wilson_interval(w, decided)
+        ci = wilson_interval(w + 0.5 * d, decided)
         tip = (f"Wilsonův 95% interval spolehlivosti: {ci[0] * 100:.0f}–{ci[1] * 100:.0f} %"
               if ci else "")
         if p0 is not None and shrink_m is not None:
-            sr = shrink_rate(w, decided, p0, shrink_m)
+            sr = shrink_rate(w + 0.5 * d, decided, p0, shrink_m)
             tip += (f"\nStažený odhad (k celkovému průměru {p0 * 100:.0f} %, "
                     f"síla {shrink_m:.0f} partií): {sr * 100:.0f} %")
         if pval is not None:
@@ -360,33 +364,36 @@ def _stat_item(label: str, results: list, name_key=None,
 
 
 def _report_prior(all_results: list, bucket_results: list[list]) -> tuple[float, float]:
-    """Celková úspěšnost (p0) a odhadnutá síla shrinkage (m) pro jeden rozbor –
-    spočti jednou za report a předej všem řádkům přes ``_stat_item``."""
+    """Celková úspěšnost – skóre, remíza=0,5 (p0) – a odhadnutá síla shrinkage
+    (m) pro jeden rozbor – spočti jednou za report a předej všem řádkům přes
+    ``_stat_item``."""
     w = all_results.count("win")
-    dec = w + all_results.count("draw") + all_results.count("loss")
-    p0 = w / dec if dec else 0.5
+    d = all_results.count("draw")
+    dec = w + d + all_results.count("loss")
+    p0 = (w + 0.5 * d) / dec if dec else 0.5
     buckets = []
     for res in bucket_results:
         bw = res.count("win")
-        bdec = bw + res.count("draw") + res.count("loss")
+        bd = res.count("draw")
+        bdec = bw + bd + res.count("loss")
         if bdec > 0:
-            buckets.append((bw, bdec))
+            buckets.append((bw + 0.5 * bd, bdec))
     m = estimate_shrink_m(buckets) if len(buckets) >= 2 else 10.0
     return p0, m
 
 
-def _overall_wr(all_results: list) -> tuple[int, int]:
-    w = all_results.count("win")
-    return w, w + all_results.count("draw") + all_results.count("loss")
+def _overall_wr(all_results: list) -> tuple[int, int, int]:
+    """(výhry, remízy, prohry) celého souboru – vstup pro :func:`_sig_flags`."""
+    return (all_results.count("win"), all_results.count("draw"),
+            all_results.count("loss"))
 
 
-def _sig_flags(bucket_results: list, w0: int, n0: int) -> list:
-    """Pro každou sadu výsledků vrátí (p, is_sig) proti celkové úspěšnosti (w0/n0),
-    po Benjamini–Hochberg korekci napříč koši."""
-    buckets = [(res.count("win"),
-                res.count("win") + res.count("draw") + res.count("loss"))
+def _sig_flags(bucket_results: list, w0: int, d0: int, l0: int) -> list:
+    """Pro každou sadu výsledků vrátí (p, is_sig) proti celkovému skóre
+    (w0/d0/l0, remíza=0,5), po Benjamini–Hochberg korekci napříč koši."""
+    buckets = [(res.count("win"), res.count("draw"), res.count("loss"))
                for res in bucket_results]
-    flags, pvals = winrate_outliers(buckets, w0, n0)
+    flags, pvals = score_outliers(buckets, w0, d0, l0)
     return list(zip(pvals, flags))
 
 
@@ -396,9 +403,10 @@ def _bucket_shrink_m(rows) -> float:
     buckets = []
     for _, res in rows:
         w = res.count("win")
-        dec = w + res.count("draw") + res.count("loss")
+        d = res.count("draw")
+        dec = w + d + res.count("loss")
         if dec > 0:
-            buckets.append((w, dec))
+            buckets.append((w + 0.5 * d, dec))
     return estimate_shrink_m(buckets) if len(buckets) >= 2 else 10.0
 
 
@@ -2849,8 +2857,8 @@ class MainWindow(QMainWindow):
         extra = f"; {n_no_time} bez času (nezahrnuty)" if n_no_time else ""
         self.chart_note.setText(
             f"{total_known} partií hráče {player} se známým časem{extra}. Úspěšnost = "
-            f"podíl výher (remízy se počítají do jmenovatele, ne do čitatele – stejná "
-            f"definice jako u grafu „Úspěšnost podle zahájení“). Čas je z UTCTime v PGN "
+            f"skóre (výhra 1 bod, remíza půl bodu, prohra 0 – stejná definice jako "
+            f"u grafu „Úspěšnost podle zahájení“). Čas je z UTCTime v PGN "
             f"hlavičce převedený na místní čas ČR (CET/CEST, včetně letního času).")
 
     def _build_move_pie(self, counts: dict, title: str,
@@ -4381,7 +4389,7 @@ class MainWindow(QMainWindow):
             self.tree_summary.setText(
                 f"Žádná partie hráče {player} ({clabel}) touto pozicí neprošla.")
             return
-        wr = root.winrate
+        wr = root.score
         extra = (f"  |  celková úspěšnost {wr * 100:.0f} %" if wr is not None else "")
         self.tree_summary.setText(
             f"{player} {clabel}: {root.games} partií touto pozicí  "
@@ -4396,7 +4404,7 @@ class MainWindow(QMainWindow):
     def _add_tree_children(self, parent_item, node, path: list[str]) -> None:
         """Přidá jen přímé potomky uzlu; hlubší tahy se dopočítají až po rozbalení."""
         for child in node.sorted_children():
-            wr = child.winrate
+            wr = child.score
             child_path = path + [child.move_uci]
             share = round(child.games * 100 / node.games) if node.games else 0
             w, d, lo = child.win, child.draw, child.loss
@@ -4524,12 +4532,12 @@ class MainWindow(QMainWindow):
         res_cz = {"win": "výhra", "draw": "remíza", "loss": "prohra"}
         all_eg = [e.result for c in cats for e in c.entries]
         p0 = _report_prior(all_eg, [])[0]
-        w0, n0 = _overall_wr(all_eg)
+        w0, d0, l0 = _overall_wr(all_eg)
         cat_m = _bucket_shrink_m([(None, [e.result for e in c.entries]) for c in cats])
         pawns_m = _bucket_shrink_m(
             [(None, [e.result for e in entries])
              for c in cats for _, entries in c.by_pawns()])
-        cat_sig = _sig_flags([[e.result for e in c.entries] for c in cats], w0, n0)
+        cat_sig = _sig_flags([[e.result for e in c.entries] for c in cats], w0, d0, l0)
         self.endgame_tree.setSortingEnabled(False)
         for ci, cat in enumerate(cats):
             cat_res = [e.result for e in cat.entries]
@@ -4555,7 +4563,7 @@ class MainWindow(QMainWindow):
             self.endgame_tree.addTopLevelItem(cat_item)
 
             pw_rows = list(cat.by_pawns())
-            pw_sig = _sig_flags([[e.result for e in ent] for _, ent in pw_rows], w0, n0)
+            pw_sig = _sig_flags([[e.result for e in ent] for _, ent in pw_rows], w0, d0, l0)
             for pi, (pawns, entries) in enumerate(pw_rows):
                 pit = _stat_item(pawns_cz(pawns), [e.result for e in entries], name_key=pawns,
                                  p0=p0, shrink_m=pawns_m, sig=pw_sig[pi])
@@ -4876,11 +4884,11 @@ class MainWindow(QMainWindow):
             f"celkové úspěšnosti (p v tooltipu).")
         all_res = [r for g in groups for r in g.results()]
         p0 = _report_prior(all_res, [])[0]
-        w0, n0 = _overall_wr(all_res)
+        w0, d0, l0 = _overall_wr(all_res)
         eco_m = _bucket_shrink_m([(None, g.results()) for g in groups])
         var_m = _bucket_shrink_m([(None, v.results()) for g in groups for v in g.variations])
-        eco_sig = _sig_flags([g.results() for g in groups], w0, n0)
-        var_sig = _sig_flags([v.results() for g in groups for v in g.variations], w0, n0)
+        eco_sig = _sig_flags([g.results() for g in groups], w0, d0, l0)
+        var_sig = _sig_flags([v.results() for g in groups for v in g.variations], w0, d0, l0)
 
         res_cz = {"win": "výhra", "draw": "remíza", "loss": "prohra"}
         self.opening_stats_tree.setSortingEnabled(False)
@@ -5003,7 +5011,8 @@ class MainWindow(QMainWindow):
             f"tempa {speeds_str}"
             f"{f' · tvé průměrné Elo ~{round(mean_elo)}' if mean_elo else ''}.\n"
             f"Δ = tvá úspěšnost − úspěšnost populace ze srovnatelné pozice "
-            f"(remízy v obou počítány do jmenovatele). ▲/▼ = po Benjamini–Hochbergu "
+            f"(skóre: výhra 1 bod, remíza půl bodu, na obou stranách). "
+            f"▲/▼ = po Benjamini–Hochbergu "
             f"(FDR 5 %) i s věcným rozdílem ≥ 5 p.b. se lišíš od populace. "
             f"Dvojklik zavře.")
         head.setWordWrap(True)
@@ -5144,7 +5153,7 @@ class MainWindow(QMainWindow):
                      if report.groups and report.groups[0].breakdowns else [])
         all_results = [r for _, res in first_rows for r in res]
         p0 = _report_prior(all_results, [])[0]
-        w0, n0 = _overall_wr(all_results)
+        w0, d0, l0 = _overall_wr(all_results)
 
         for group in report.groups:
             g_item = QTreeWidgetItem([group.title, "", "", ""])
@@ -5163,7 +5172,7 @@ class MainWindow(QMainWindow):
                     b_item.setToolTip(0, bd.hint)
                 g_item.addChild(b_item)
                 bd_m = _bucket_shrink_m(bd.rows)
-                sigs = _sig_flags([res for _, res in bd.rows], w0, n0)
+                sigs = _sig_flags([res for _, res in bd.rows], w0, d0, l0)
                 for i, (label, results) in enumerate(bd.rows):
                     b_item.addChild(_stat_item(label, results, name_key=label.casefold(),
                                                p0=p0, shrink_m=bd_m, sig=sigs[i]))
