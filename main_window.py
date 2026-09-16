@@ -77,7 +77,7 @@ from accuracy import (
     win_prob,
     win_series,
 )
-from accuracy_batch import AccuracyBatch
+from accuracy_batch import MAX_MOVE_CHART, AccuracyBatch
 from analysis_cache import AnalysisCache
 from board_widget import BoardWidget
 from tactics import STATUS_LABEL, TacticsStore, extract_puzzles
@@ -102,6 +102,7 @@ from move_class import (
 )
 from heatmap_widget import HeatmapWidget
 from histogram_widget import HistogramChart
+from move_map_widget import MoveAccuracyMap
 from time_heatmap_widget import TimeHeatmap
 import net_util
 import opening_explorer
@@ -1330,6 +1331,8 @@ class MainWindow(QMainWindow):
         ("Kritičnost × přesnost tahu", "crit_scatter"),
         ("Přesnost podle figury / typu tahu", "piece_acc"),
         ("Hrubky podle figury / typu tahu", "piece_blund"),
+        ("Hrubky podle čísla tahu", "blund_by_move"),
+        ("Přesnost podle čísla tahu (mapa)", "move_map"),
         ("Chybová heatmapa – odkud táhnu", "err_from"),
         ("Chybová heatmapa – kam táhnu", "err_to"),
         ("Heatmapa úspěšnosti podle dne a hodiny", "time_heatmap"),
@@ -1381,10 +1384,12 @@ class MainWindow(QMainWindow):
         self.chart_hist = HistogramChart()
         self.chart_heat = TimeHeatmap()
         self.chart_errmap = HeatmapWidget()
+        self.chart_move_map = MoveAccuracyMap()
         self.chart_stack.addWidget(self.chart_view)
         self.chart_stack.addWidget(self.chart_hist)
         self.chart_stack.addWidget(self.chart_heat)
         self.chart_stack.addWidget(self.chart_errmap)
+        self.chart_stack.addWidget(self.chart_move_map)
         lay.addWidget(self.chart_stack, stretch=1)
         return page
 
@@ -2335,6 +2340,8 @@ class MainWindow(QMainWindow):
             "crit_scatter": self._chart_crit_scatter,
             "piece_acc": lambda: self._chart_piece(False),
             "piece_blund": lambda: self._chart_piece(True),
+            "blund_by_move": self._chart_blunder_by_move,
+            "move_map": self._chart_move_map,
             "err_from": lambda: self._chart_error_map("f"),
             "err_to": lambda: self._chart_error_map("t"),
             "time_heatmap": self._chart_time_heatmap,
@@ -2912,6 +2919,75 @@ class MainWindow(QMainWindow):
             "Jen tahy hráče, z posledního rozboru na kartě Přesnost. Levá část = "
             "podle tažené figury, pravá = podle typu tahu (tytéž tahy, jiný pohled). "
             "Počty tahů: " + ", ".join(f"{c} {n}" for c, n in zip(cats, ns)) + ".")
+
+    def _chart_blunder_by_move(self) -> None:
+        res = self._acc_last_result
+        if not res:
+            self._set_chart_empty("Nejdřív spusť rozbor na kartě Přesnost.")
+            return
+        rows = res.get("move_accuracy_by_no") or []
+        rows = [r for r in rows if r.get("n")]
+        if not rows:
+            self._set_chart_empty("Rozbor na kartě Přesnost zatím nemá tahy k rozdělení "
+                                  "podle čísla tahu.")
+            return
+        cats = [(str(r["move"]) if r["move"] <= MAX_MOVE_CHART
+                else f"{MAX_MOVE_CHART + 1}+") for r in rows]
+        vals = [r["blund_100"] for r in rows]
+        ns = [r["n"] for r in rows]
+        bs = QBarSet("hrubky / 100 tahů")
+        for v in vals:
+            bs.append(float(v))
+        bs.setColor(QColor("#c62828"))
+        series = QBarSeries()
+        series.append(bs)
+        series.setBarWidth(1.0)
+        chart = QChart()
+        chart.addSeries(series)
+        chart.legend().hide()
+        chart.setTitle("Hrubky podle čísla tahu")
+        ax = QBarCategoryAxis()
+        ax.append(cats)
+        ay = QValueAxis()
+        ay.setRange(0.0, max(vals) * 1.15 or 1.0)
+        ay.setTitleText("hrubky na 100 tahů hráče při tomto čísle tahu")
+        chart.addAxis(ax, Qt.AlignBottom)
+        chart.addAxis(ay, Qt.AlignLeft)
+        series.attachAxis(ax)
+        series.attachAxis(ay)
+        self.chart_view.setChart(chart)
+        self.chart_stack.setCurrentWidget(self.chart_view)
+        top3 = sorted(zip(cats, vals, ns), key=lambda t: -t[1])[:3]
+        self.chart_note.setText(
+            "Jen tahy hráče, z posledního rozboru na kartě Přesnost. Vodorovná osa = "
+            "kolikátý tah partie (hráčův, ne půltah); svislá = hrubky na 100 tahů "
+            "odehraných v tom čísle tahu napříč celou databází (ne raw počet – jinak "
+            "by pozdní tahy vypadaly „bezpečněji“ jen proto, že tam dojde míň partií). "
+            f"Nejhorší: " + ", ".join(f"tah {c} ({v:.0f}/100, n={n})" for c, v, n in top3) + ".")
+
+    def _chart_move_map(self) -> None:
+        res = self._acc_last_result
+        if not res:
+            self._set_chart_empty("Nejdřív spusť rozbor na kartě Přesnost.")
+            return
+        rows = res.get("move_accuracy_by_no") or []
+        rows = [r for r in rows if r.get("n") and r.get("acc") is not None]
+        if len(rows) < 2:
+            self._set_chart_empty("Rozbor na kartě Přesnost zatím nemá dost tahů k "
+                                  "rozdělení podle čísla tahu.")
+            return
+        pts = [(r["move"], r["acc"], r["n"]) for r in rows]
+        tail = f"{MAX_MOVE_CHART + 1}+" if (
+            rows[-1]["move"] == MAX_MOVE_CHART + 1) else None
+        self.chart_move_map.set_data(pts, tail_label=tail)
+        self.chart_stack.setCurrentWidget(self.chart_move_map)
+        self.chart_note.setText(
+            "Jen tahy hráče. Pro každé číslo tahu je vynesena průměrná přesnost všech "
+            "hráčových tahů při tom čísle tahu napříč celou databází (ne jedné partie); "
+            "body mezi sebou appka hladce interpoluje (Catmull-Rom), plocha pod křivkou "
+            "je obarvená podle výšky (červená = nízká přesnost, zelená = vysoká)."
+            + (f" „{tail}" + "“ sdružuje všechny pozdější tahy do jednoho koše."
+               if tail else ""))
 
     def _chart_error_map(self, which: str) -> None:
         res = self._acc_last_result

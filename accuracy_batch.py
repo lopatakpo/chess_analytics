@@ -35,6 +35,20 @@ _MIN_SPREAD_FOR_SLOPE = 30.0     # rozptyl Ela nutný, aby šlo fitovat i sklon
 _DEFAULT_SLOPE = -580.0          # Elo na jednotku ln(ACPL); víc ACPL → míň Ela
 WILD_THRESHOLD = 12.0            # % – nad tím je partie „divoká" (volatilita)
 N_CRIT_BINS = 10                 # koše kritičnosti (0..1) pro graf kritičnost×přesnost
+MAX_MOVE_CHART = 60              # nad tímhle číslem tahu se vše sečte do koše "61+"
+
+
+def _cap_move_tot(move_tot: dict, max_move: int = MAX_MOVE_CHART) -> dict:
+    """Sloučí čísla tahů nad ``max_move`` do jednoho koše – řídký ocas (partie,
+    co se táhnou do stovky tahů) by graf jen znepřehlednil."""
+    out: dict = {}
+    for mv, v in move_tot.items():
+        key = mv if mv <= max_move else max_move + 1
+        t = out.setdefault(key, [0.0, 0, 0])
+        t[0] += v[0]
+        t[1] += v[1]
+        t[2] += v[2]
+    return out
 
 
 def _phase_list(boards, opening_plies: int) -> list[str]:
@@ -366,6 +380,7 @@ class AccuracyBatch(QThread):
         # přesnost / hrubky podle tažené figury a typu tahu (jen tahy hráče)
         piece_stat: dict = {}     # piece_type -> [sum_acc, n, blund]
         mtype_stat: dict = {}     # "braní"/"tichý tah"/… -> [sum_acc, n, blund]
+        move_stat: dict = {}      # číslo tahu (1-based) -> [sum_acc, n, blund]
         # chybová heatmapa – pole (odkud/kam) sjednocené na perspektivu hráče
         err_sq = {"bf": [0] * 64, "bt": [0] * 64, "mf": [0] * 64, "mt": [0] * 64,
                   "af": [0] * 64, "at": [0] * 64}
@@ -397,6 +412,10 @@ class AccuracyBatch(QThread):
             st_m[0] += acc_k
             st_m[1] += 1
             st_m[2] += int(is_bl)
+            st_mv = move_stat.setdefault(k // 2 + 1, [0.0, 0, 0])
+            st_mv[0] += acc_k
+            st_mv[1] += 1
+            st_mv[2] += int(is_bl)
             sf = m.from_square if is_white else chess.square_mirror(m.from_square)
             stg = m.to_square if is_white else chess.square_mirror(m.to_square)
             err_sq["af"][sf] += 1
@@ -445,6 +464,7 @@ class AccuracyBatch(QThread):
             "brilliants": brilliants,
             "piece_stat": piece_stat,
             "mtype_stat": mtype_stat,
+            "move_stat": move_stat,
             "err_sq": err_sq,
         }
 
@@ -463,6 +483,7 @@ class AccuracyBatch(QThread):
         brilliant_games: list = []
         piece_tot: dict = {}
         mtype_tot: dict = {}
+        move_tot: dict = {}
         err_tot = {k: [0] * 64 for k in ("bf", "bt", "mf", "mt", "af", "at")}
 
         for r in records:
@@ -516,6 +537,11 @@ class AccuracyBatch(QThread):
                 t[2] += bl
             for mt, (sa, n, bl) in (r.get("mtype_stat") or {}).items():
                 t = mtype_tot.setdefault(mt, [0.0, 0, 0])
+                t[0] += sa
+                t[1] += n
+                t[2] += bl
+            for mv, (sa, n, bl) in (r.get("move_stat") or {}).items():
+                t = move_tot.setdefault(mv, [0.0, 0, 0])
                 t[0] += sa
                 t[1] += n
                 t[2] += bl
@@ -582,6 +608,9 @@ class AccuracyBatch(QThread):
                         "n": v[1]}
                     for k, v in d.items()}
 
+        move_by_no = _fmt_group(_cap_move_tot(move_tot))
+        move_accuracy_by_no = [{"move": mv, **move_by_no[mv]} for mv in sorted(move_by_no)]
+
         return {
             "n_games": len(records), "requested": len(self._jobs), "depth": self._depth,
             "partial": self._stop, "thorough": self._thorough,
@@ -594,6 +623,7 @@ class AccuracyBatch(QThread):
             "brilliants": brilliant_games,
             "piece_accuracy": _fmt_group(piece_tot),
             "movetype_accuracy": _fmt_group(mtype_tot),
+            "move_accuracy_by_no": move_accuracy_by_no,   # [{move,acc,blund_100,n}, …], seřazeno
             "error_map": err_tot,   # 64-pole, perspektiva hráče: b*=hrubky, m*=chyby+, a*=všechny tahy; *f=odkud, *t=kam
         }
 

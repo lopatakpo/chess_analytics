@@ -29,8 +29,10 @@ Desktopová aplikace (PySide6 / Qt) pro:
 - **grafy** (karta *Grafy*): eval graf partie, vývoj ACPL/přesnosti/IPR (i konverze/
   záchrany/Tactical Awareness) v čase, úspěšnost podle zahájení, histogram divokosti
   partií, kumulativní „štěstí" v čase, dotahování (konverze/záchrana sloupcově),
-  radar profilu hráče, kritičnost×přesnost tahu, koláč tahů podle chess.com
-  kategorie, heatmapa úspěšnosti podle dne v týdnu a hodiny, Elo hráč×soupeř scatter
+  radar profilu hráče, kritičnost×přesnost tahu, přesnost i hrubky podle
+  figury/typu tahu i podle čísla tahu (poslední jako interpolovaná „mapa"
+  s legendou), koláč tahů podle chess.com kategorie, heatmapa úspěšnosti
+  podle dne v týdnu a hodiny, Elo hráč×soupeř scatter
   (barva podle výsledku); + histogramy se zvonovou (normální) křivkou a boxem
   Průměr/Sm. odchylka/N (styl Minitab) pro délku partie, první braní, vstup do
   koncovky, materiálové manko, Elo rozdíl soupeře, ztrátu bodů z vyhraných
@@ -183,7 +185,7 @@ karty okna:
 | **Koncovky** | partie rozřazené podle typu koncovky |
 | **Vzorce** | úspěšnost podle rošády, výměny dam, materiálu, struktury, konce a délky partie |
 | **Přesnost** | přesnost / ACPL / EP / hrubky / shoda s enginem přes databázi (na pozadí, s cache) |
-| **Grafy** | eval graf partie, vývoj v čase (i konverze/záchrana/Tactical Awareness), divokost partií, úspěšnost podle zahájení, kumulativní štěstí, dotahování, radar profilu hráče, kritičnost×přesnost, koláč tahů podle chess.com kategorie, heatmapa úspěšnosti podle dne/hodiny, Elo hráč×soupeř scatter, + histogramy se zvonovou křivkou (délka, výsledek, první braní, koncovka, materiál, Elo, ztráta bodů, Tactical Awareness) přes celou DB |
+| **Grafy** | eval graf partie, vývoj v čase (i konverze/záchrana/Tactical Awareness), divokost partií, úspěšnost podle zahájení, kumulativní štěstí, dotahování, radar profilu hráče, kritičnost×přesnost, přesnost/hrubky podle figury i podle čísla tahu (+ interpolovaná „mapa" přesnosti podle čísla tahu), koláč tahů podle chess.com kategorie, heatmapa úspěšnosti podle dne/hodiny, Elo hráč×soupeř scatter, + histogramy se zvonovou křivkou (délka, výsledek, první braní, koncovka, materiál, Elo, ztráta bodů, Tactical Awareness) přes celou DB |
 | **Taktika** | taktické úlohy z hráčových partií (přehlédnuté i nalezené), motivy, obtížnost, řešení na šachovnici s tolerancí, hvězdička, opakování SM-2 |
 | **Report** | uložené snímky statistik hráčů (Přesnost + Vzorce) a jejich vzájemné porovnání – tabulka metrik vedle sebe, srovnávací grafy (radar / sloupce / kategorie tahů), export do PDF |
 | **Časový management** | čas na tah (z PGN `[%clk]`) vs. přesnost/ACPL/hrubky – podle fáze partie, tempa, tažené figury a délky přemýšlení (na pozadí, čte cache z Přesnosti, engine se znovu nevolá) |
@@ -932,6 +934,7 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `heatmap_widget.py` | vykreslení heatmapy (QPainter) |
 | `histogram_widget.py` | histogram se zvonovou (normální) křivkou a stat-boxem – styl Minitab (QPainter) |
 | `time_heatmap_widget.py` | heatmapa úspěšnosti podle dne v týdnu a hodiny (QPainter) |
+| `move_map_widget.py` | interpolovaná mapa přesnosti tahu podle čísla tahu partie, s legendou (QPainter) |
 | `patterns.py` | statistické vzorce partií (rošáda, dámy, materiál, struktura, …) + lehké průchody pro kartu Grafy |
 | `openings.py` | zařazení partií podle zahájení (ECO, **s transpozicemi** – podle pozic, ne pořadí tahů), diverzita repertoáru, hloubka teorie/book exit |
 | `opening_explorer.py` | porovnání úspěšnosti zahájení hráče s populací přes lichess Opening Explorer (síť + gzip cache) |
@@ -946,7 +949,7 @@ tahy – a pak na cílové pole. Při proměně pěšce se zeptá na figuru.
 | `report_charts.py` | srovnávací grafy pro kartu Report (jedna série na hráče, ze snímků) |
 | `report_export.py` | export porovnání hráčů do PDF (`QTextDocument` → `QPrinter`) |
 | `sample.pgn` | ukázkové partie (Immortal Game, Opera Game) |
-| `tests/` | automatické testy (pytest) čistých modulů – přesnost, charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, stažení partií, streamované čtení PGN, populace koncovek, čas na tah, statistika, cache, anomálie |
+| `tests/` | automatické testy (pytest) čistých modulů – přesnost (i podle čísla tahu), charakter, klasifikace tahů, motivy, zahájení (transpozice), porovnání s populací, stažení partií, streamované čtení PGN, populace koncovek, čas na tah, interpolace mapy tahů, statistika, cache, anomálie |
 
 ## Testy
 
