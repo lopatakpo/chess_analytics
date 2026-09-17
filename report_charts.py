@@ -505,7 +505,7 @@ def _openings(snaps):
         for o in s.get("openings", []):
             dec = o["w"] + o["d"] + o["l"]
             if dec:
-                rows.append((o["label"], o["n"], 100.0 * o["w"] / dec))
+                rows.append((o["label"], o["n"], 100.0 * (o["w"] + 0.5 * o["d"]) / dec))
         if not rows:
             out.append((f"Zahájení – {_name(s)}", _empty("Žádná data.")))
             continue
@@ -539,7 +539,7 @@ def _openings(snaps):
 def _time_heatmap(snaps):
     out = []
     for s in snaps:
-        wins = [[0] * 24 for _ in range(7)]
+        score = [[0.0] * 24 for _ in range(7)]
         totals = [[0] * 24 for _ in range(7)]
         for row in s.get("game_log", []):
             iso, _delta, result = row
@@ -552,11 +552,13 @@ def _time_heatmap(snaps):
             loc = to_prague_local(dt)
             totals[loc.weekday()][loc.hour] += 1
             if result == "win":
-                wins[loc.weekday()][loc.hour] += 1
+                score[loc.weekday()][loc.hour] += 1.0
+            elif result == "draw":
+                score[loc.weekday()][loc.hour] += 0.5
         if not any(any(r) for r in totals):
             out.append((f"Heatmapa dne × hodiny – {_name(s)}", _empty("Žádné partie se známým časem.")))
             continue
-        wr = [[(wins[d][h] / totals[d][h] if totals[d][h] else None) for h in range(24)]
+        wr = [[(score[d][h] / totals[d][h] if totals[d][h] else None) for h in range(24)]
               for d in range(7)]
         w = TimeHeatmap()
         w.set_data(wr, totals)

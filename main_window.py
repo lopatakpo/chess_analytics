@@ -2474,7 +2474,7 @@ class MainWindow(QMainWindow):
             w, d, lo = res.count("win"), res.count("draw"), res.count("loss")
             dec = w + d + lo
             if dec:
-                rows.append((g.label, len(res), w / dec))
+                rows.append((g.label, len(res), (w + 0.5 * d) / dec))
         if not rows:
             self._set_chart_empty("Žádné partie k zobrazení.")
             return
@@ -2504,6 +2504,7 @@ class MainWindow(QMainWindow):
         series.attachAxis(ay)
         self.chart_view.setChart(chart)
         self.chart_note.setText(
+            "Úspěšnost = skóre (výhra 1 bod, remíza půl bodu, prohra 0). "
             "Přesný Wilsonův interval spolehlivosti pro každé zahájení viz "
             "tooltip na kartě Zahájení.")
 
@@ -3024,7 +3025,7 @@ class MainWindow(QMainWindow):
             return
         colors = self.cmb_chart_color.currentData()
         log = game_log(self.games, player, colors, keep=self._filter_keep)
-        wins = [[0] * 24 for _ in range(7)]
+        score = [[0.0] * 24 for _ in range(7)]
         totals = [[0] * 24 for _ in range(7)]
         n_no_time = 0
         for dt, _delta, result in log:
@@ -3035,14 +3036,16 @@ class MainWindow(QMainWindow):
             d, h = loc.weekday(), loc.hour
             totals[d][h] += 1
             if result == "win":
-                wins[d][h] += 1
+                score[d][h] += 1.0
+            elif result == "draw":
+                score[d][h] += 0.5
         total_known = sum(sum(row) for row in totals)
         if total_known == 0:
             self._set_chart_empty(
                 "Žádné partie se známým časem (UTCDate/UTCTime nebo Date+Time "
                 "v hlavičce PGN).")
             return
-        winrate = [[(wins[d][h] / totals[d][h] if totals[d][h] else None) for h in range(24)]
+        winrate = [[(score[d][h] / totals[d][h] if totals[d][h] else None) for h in range(24)]
                   for d in range(7)]
         self.chart_heat.set_data(winrate, totals)
         self.chart_stack.setCurrentWidget(self.chart_heat)

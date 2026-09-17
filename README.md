@@ -679,8 +679,9 @@ graf obnoví.
 - **Divokost partií** – histogram volatility (viz karta *Přesnost* → Charakter
   partií) přes partie z posledního rozboru na kartě *Přesnost*.
 - **Úspěšnost podle zahájení** – vodorovný sloupcový graf, top 15 zahájení podle
-  počtu partií, seřazeno podle úspěšnosti. Přesný Wilsonův interval pro každé
-  zahájení je v tooltipu na kartě *Zahájení*.
+  počtu partií, seřazeno podle úspěšnosti. Úspěšnost = **skóre** (výhra 1 bod,
+  remíza půl bodu, prohra 0 – stejná definice jako všude jinde v appce).
+  Přesný Wilsonův interval pro každé zahájení je v tooltipu na kartě *Zahájení*.
 
 - **Kumulativní „štěstí"** – běžící součet (skutečné − Elo-očekávané skóre)
   partie po partii, chronologicky, jen partie se známým Elem soupeře
