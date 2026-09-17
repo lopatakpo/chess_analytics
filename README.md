@@ -617,10 +617,18 @@ Strom je po spuštění **sbalený** a **kliknutím na hlavičku sloupce** se d�
 počet pěšců na šachovnici → jednotlivé partie**. Pěšcovky
 jsou pod jednou kategorií *Pěšcová koncovka* s podřádky *1 pěšec / 2 pěšci / …*;
 stejné dělení má i každá další kategorie. Každá partie je v kategorii započítaná
-právě jednou, podle počtu pěšců při vstupu (součet podřádků = počet partií
-kategorie). Na každé úrovni je počet partií, úspěšnost a pruh V/R/P. **Dvojklik na partii** přepne na kartu
-*Partie a rozbor* a nastaví šachovnici na tah, kterým se partie stala danou
-koncovkou (u pěšcovek na chvíli, kdy měla daný počet pěšců).
+**právě jednou** – podle počtu pěšců v **nejhlubším/nejčistším stavu**, kterého
+partie v tý kategorii doopravdy dosáhla (nejméně pěšců), **ne** podle stavu při
+prvním vstupu. Kategorie jako *Věžová koncovka* typicky žije od zmizení dam
+a lehkých figur až do konce partie a pěšci se v ní dál vyměňují – při prvním
+vstupu by tak skoro každá věžovka skončila v koši „hodně pěšců" (kolik jich
+bylo, když zmizely poslední lehké figury) a klasické koncovky jako *věž
+a pěšec proti věži* (Lucena/Philidor), do kterých se partie skutečně
+dohrála, by zůstaly schované pod dřívějším, pěšci bohatším vstupem. Součet
+podřádků pořád odpovídá počtu partií kategorie. Na každé úrovni je počet
+partií, úspěšnost a pruh V/R/P. **Dvojklik na partii** přepne na kartu
+*Partie a rozbor* a nastaví šachovnici na tah s nejméně pěšci v dané kategorii
+(u pěšcovek na ten nejnižší dosažený počet pěšců).
 
 #### Populace z lichess dumpu (tlačítko *📥 Populace z lichess dumpu…*)
 
@@ -634,7 +642,8 @@ a tempu:
   `.zst` čte přes stdlib `compression.zstd` na Pythonu 3.14+, jinak balíček
   `zstandard`),
 - levný filtr podle hlaviček (**obě strany v Elo pásmu**, vybraná tempa, dohraná
-  partie), pak přehrání tahů a při **prvním vstupu do každé kategorie** zápis
+  partie), pak přehrání tahů a v **nejhlubším/nejčistším stavu každé kategorie**
+  (nejméně pěšců, ne první vstup – stejný důvod jako u karty Koncovky výše) zápis
   výsledku z pohledu **materiálově silnější strany**,
 - výsledek: tabulka kategorií s **remízovostí při vyrovnaném materiálu** a
   **konverzí +1 / +2 pěšce** (dvojklik = rozpad podle Ela a tempa),

@@ -91,10 +91,15 @@ def _record(cats: dict, label: str, pawns: int, signed: int, res: str,
 
 
 def _scan_game(game, res: str, cats: dict, eb: str, tc: str) -> bool:
+    """Pro každou kategorii koncovky, kterou partie navštíví, zaznamená stav
+    s NEJMÉNĚ pěšci (nejhlubší/nejčistší podobu té koncovky), ne stav při
+    prvním vstupu – kategorie jako „V vs V" typicky žije od zmizení lehkých
+    figur až do konce partie a pěšci se v ní dál vyměňují; první vstup by tak
+    skoro vždy padl do koše „hodně pěšců" a skryl skutečné koncovkové pozice
+    (stejná oprava jako v ``endgames.analyze_endgames``)."""
     board = game.start_board()
     moves = game.moves
-    seen: set[str] = set()
-    hit = False
+    best: dict[str, tuple[int, int]] = {}   # label -> (pawns, signed material)
     for ply in range(len(moves) + 1):
         if ply:
             try:
@@ -105,13 +110,14 @@ def _scan_game(game, res: str, cats: dict, eb: str, tc: str) -> bool:
         if not EG._table_ok(c):
             continue
         label = EG.position_category(board, c)
-        if label in seen:
-            continue
-        seen.add(label)
-        hit = True
-        wv, bv = EG._side_values(c)
-        _record(cats, label, c[0] + c[1], wv - bv, res, eb, tc)
-    return hit
+        pawns = c[0] + c[1]
+        cur = best.get(label)
+        if cur is None or pawns < cur[0]:
+            wv, bv = EG._side_values(c)
+            best[label] = (pawns, wv - bv)
+    for label, (pawns, signed) in best.items():
+        _record(cats, label, pawns, signed, res, eb, tc)
+    return bool(best)
 
 
 def new_state(path: str, elo_lo: int, elo_hi: int, time_classes) -> dict:

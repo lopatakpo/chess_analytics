@@ -190,8 +190,8 @@ def position_category(board: chess.Board, counts: tuple | None = None) -> str:
 @dataclass
 class EGEntry:
     game_index: int
-    enter_ply: int       # půltah, kterým partie do kategorie vstoupila
-    pawns: int           # počet pěšců při vstupu do kategorie
+    enter_ply: int       # půltah NEJHLOUBĚJI dosaženého stavu kategorie (nejméně pěšců)
+    pawns: int           # počet pěšců v tom nejhlubším stavu
     result: str | None   # "win" / "draw" / "loss" / None (z pohledu hráče)
 
 
@@ -230,9 +230,25 @@ class EGCategory:
 def analyze_endgames(games, player: str, keep=None) -> list[EGCategory]:
     """Rozbor koncovek hráče napříč všemi jeho partiemi (bílé i černé).
 
-    Každá partie je v kategorii započítaná právě jednou – zařadí se podle počtu
-    pěšců ve chvíli, kdy do té kategorie poprvé vstoupila. Součet partií
-    v podřádcích podle počtu pěšců proto odpovídá počtu partií kategorie.
+    Každá partie je v kategorii započítaná právě jednou – ale NE podle počtu
+    pěšců při **prvním** vstupu do kategorie. Kategorie jako „Věžová koncovka:
+    V vs V" typicky zůstává stejná od chvíle, kdy zmizí dámy/lehké figury, až
+    do konce partie – během tý doby se ale pěšci dál postupně vyměňují. Kdyby
+    appka brala pěšce z prvního vstupu, prakticky každá věžovka by skončila
+    v koši „8–14 pěšců" (kolik jich bylo, když zmizely poslední lehké figury),
+    a klasická koncovka „věž + 1 pěšec proti věži" (Lucena/Philidor), do který
+    se partie skutečně dohrála, by zůstala schovaná pod dřívějším, pěšci
+    bohatším vstupem – přesně tenhle nedostatek appka měla, dokud ho uživatel
+    neodhalil (u 575 partií kategorie „V vs V" jen 1 skončila v koši „1 pěšec",
+    ačkoli hráč si byl jistý, že takových koncovek odehrál víc).
+
+    Appka proto z každé partie zaznamená pro danou kategorii stav s
+    **nejméně pěšci**, kterého partie v tý kategorii vůbec dosáhla – tedy
+    nejhlubší/nejčistší podobu dané koncovky, ne první okamžik, kdy do ní
+    partie vstoupila. Součet partií v podřádcích podle počtu pěšců proto
+    pořád odpovídá počtu partií kategorie (pořád jeden záznam na partii),
+    jen ukazuje smysluplnější číslo. Dvojklik na partii v appce teď skočí
+    rovnou na tenhle nejhlubší bod, ne na první vstup do kategorie.
     """
     cats: dict[str, EGCategory] = {}
     for gi, g in enumerate(games):
@@ -241,7 +257,7 @@ def analyze_endgames(games, player: str, keep=None) -> list[EGCategory]:
         if not game_matches(g, player, "both"):
             continue
         result = player_result(g, player)
-        seen: set[str] = set()
+        best: dict[str, tuple[int, int]] = {}   # label -> (ply, pawns) s nejméně pěšci
         board = g.start_board()          # jedna šachovnice, bez kopií na každý půltah
         moves = g.moves
         for ply in range(len(moves) + 1):
@@ -251,9 +267,11 @@ def analyze_endgames(games, player: str, keep=None) -> list[EGCategory]:
             if not _table_ok(c):
                 continue
             label = position_category(board, c)
-            if label in seen:
-                continue
-            seen.add(label)
+            pawns = c[0] + c[1]
+            cur = best.get(label)
+            if cur is None or pawns < cur[1]:
+                best[label] = (ply, pawns)
+        for label, (ply, pawns) in best.items():
             cats.setdefault(label, EGCategory(label)).entries.append(
-                EGEntry(gi, ply, c[0] + c[1], result))
+                EGEntry(gi, ply, pawns, result))
     return sorted(cats.values(), key=lambda c: sort_key(c.label))

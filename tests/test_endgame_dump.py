@@ -7,6 +7,7 @@ import chess.pgn
 import pytest
 
 import endgame_dump as ed
+from pgn_game import LoadedGame
 
 
 def _ply_depth(node):
@@ -133,3 +134,20 @@ def test_tc_of_and_edge_key():
     assert ed._tc_of("Rated UltraBullet game") == "ultrabullet"
     assert ed._tc_of("Something") is None
     assert ed._edge_key(1) == "1" and ed._edge_key(2) == "2" and ed._edge_key(5) == "3+"
+
+
+def test_scan_game_pouzije_nejmene_pescu_ne_prvni_vstup():
+    """Stejná regrese jako v tests/test_endgames.py, jen pro populační
+    agregátor: partie vstoupí do „V vs V" se 2 pěšci, o tah později (pořád
+    stejná kategorie) se sníží na 1 zachycenou výměnou – appka musí
+    zaznamenat pawns=1 (nejhlubší stav), NE pawns=2 (první vstup)."""
+    fen = "r3k3/8/2p5/1P6/8/8/8/R3K3 w - - 0 1"   # bílý pěšec b5 x černý pěšec c6
+    g = LoadedGame({"FEN": fen, "SetUp": "1"}, [chess.Move.from_uci("b5c6")])
+    cats: dict = {}
+    hit = ed._scan_game(g, "w", cats, "1800", "blitz")
+    assert hit is True
+    label = "Věžová koncovka: V vs V"
+    assert label in cats
+    c = cats[label]
+    assert c["n"] == 1
+    assert c["pawns"] == {"1": [1, 0]}                # NE {"2": [...]}, NE oboje
