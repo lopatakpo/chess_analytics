@@ -97,3 +97,24 @@ def test_analyze_endgames_by_pawns_soucet_odpovida_poctu_partii():
     rook_cat = next(c for c in cats if c.label == "Věžová koncovka: V vs V")
     total_in_pawns = sum(len(entries) for _, entries in rook_cat.by_pawns())
     assert total_in_pawns == len(rook_cat.entries) == 5
+
+
+def test_analyze_endgames_jedna_partie_ve_vice_kategoriich():
+    """Jedna koncovka přechází v druhou – partie tak může spadat pod víc
+    kategorií zároveň (viz README, sekce Koncovky). Oprava „nejméně pěšců"
+    tohle nesmí rozbít: partie nejdřív projde „Věž a střelec: V+S vs V"
+    (černý střelec navíc), pak bílá věž střelce sebere a partie dohraje
+    v „Věžová koncovka: V vs V" – obě kategorie musí partii počítat právě
+    jednou."""
+    fen = "r3k3/8/8/3b4/8/8/8/R3K3 w - - 0 1"
+    g = _game(fen, ["a1a5", "e8d8", "a5d5"], result="win")
+    cats = analyze_endgames([g], "hrac")
+    by_label = {c.label: c for c in cats}
+    assert "Věž a střelec: V+S vs V" in by_label
+    assert "Věžová koncovka: V vs V" in by_label
+    assert len(by_label["Věž a střelec: V+S vs V"].entries) == 1
+    assert len(by_label["Věžová koncovka: V vs V"].entries) == 1
+    # věžovka: střelec padl na ply 3 (a5xd5), pěšci žádní -> pawns=0, enter_ply=3
+    rook_entry = by_label["Věžová koncovka: V vs V"].entries[0]
+    assert rook_entry.pawns == 0
+    assert rook_entry.enter_ply == 3
